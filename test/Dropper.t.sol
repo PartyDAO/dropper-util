@@ -36,7 +36,6 @@ contract DropperTest is PRBTest, StdCheats {
     MockERC20 token;
     bytes32[] merkleProof;
     bytes32 merkleRoot;
-    uint256 dropId;
 
     address[4] members;
     uint256[4] amounts;
@@ -65,28 +64,30 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function _hashNode(bytes32 a, bytes32 b) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(a, b));
+        return keccak256(a < b ? abi.encodePacked(a, b) : abi.encodePacked(b, a));
     }
 
     function _hashLeaf(address a, uint256 amount) private pure returns (bytes32) {
         return keccak256(abi.encodePacked(a, amount));
     }
 
-    function testCreateDrop() public {
+    function testCreateDrop() public returns (uint256 dropId) {
         deal(address(token), address(this), 1000e18);
         token.approve(address(dropper), 1000e18);
 
+        uint256 expectedDropId = dropper.numDrops() + 1;
         vm.expectEmit(true, true, true, true);
         emit DropCreated(
-            1, merkleRoot, 1000e18, address(token), block.timestamp + 3600, address(this), "someURI"
+            expectedDropId, merkleRoot, 1000e18, address(token), block.timestamp + 3600, address(this), "someURI"
         );
 
+        uint256 balanceBefore = token.balanceOf(address(dropper));
         dropId = dropper.createDrop(
             merkleRoot, 1000e18, address(token), block.timestamp + 3600, address(this), "someURI"
         );
 
-        assertEq(dropId, 1);
-        assertEq(token.balanceOf(address(dropper)), 1000e18);
+        assertEq(dropId, expectedDropId);
+        assertEq(token.balanceOf(address(dropper)), balanceBefore + 1000e18);
     }
 
     function testCreateDropMerkleRootNotSet() public {
@@ -122,7 +123,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaim() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         address member = members[0];
         uint256 amount = amounts[0];
@@ -130,8 +131,8 @@ contract DropperTest is PRBTest, StdCheats {
         proof[0] = _hashLeaf(members[1], amounts[1]);
         proof[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
 
-        // vm.expectEmit(true, true, true, true);
-        // emit DropClaimed(dropId, member, address(token), amount);
+        vm.expectEmit(true, true, true, true);
+        emit DropClaimed(dropId, member, address(token), amount);
 
         vm.prank(member);
         dropper.claim(dropId, amount, proof);
@@ -141,7 +142,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimDropExpired() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         uint256 amount = amounts[0];
         bytes32[] memory proof = new bytes32[](2);
@@ -155,7 +156,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimDropAlreadyClaimed() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         address member = members[0];
         uint256 amount = amounts[0];
@@ -172,7 +173,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimInsufficientTokensRemaining() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         uint256 amount = 1000e18 + 1;
         bytes32[] memory proof = new bytes32[](2);
@@ -184,7 +185,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimInvalidMerkleProof() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         uint256 amount = amounts[0];
         bytes32[] memory invalidProof = new bytes32[](1);
@@ -195,39 +196,32 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testBatchClaim() public {
-        testCreateDrop();
+        uint256 dropId1 = testCreateDrop();
+        uint256 dropId2 = testCreateDrop();
 
         address member = members[0];
-        uint256 amount1 = amounts[0];
-        uint256 amount2 = amounts[1];
-        bytes32[] memory proof1 = new bytes32[](2);
-        proof1[0] = _hashLeaf(members[1], amounts[1]);
-        proof1[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
-        bytes32[] memory proof2 = new bytes32[](2);
-        proof2[0] = _hashLeaf(members[0], amounts[0]);
-        proof2[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
 
         uint256[] memory dropIds = new uint256[](2);
+        dropIds[0] = dropId1;
+        dropIds[1] = dropId2;
         uint256[] memory claimAmounts = new uint256[](2);
+        claimAmounts[0] = claimAmounts[1]= amounts[0];
         bytes32[][] memory proofs = new bytes32[][](2);
-
-        dropIds[0] = dropId;
-        dropIds[1] = dropId;
-        claimAmounts[0] = amount1;
-        claimAmounts[1] = amount2;
-        proofs[0] = proof1;
-        proofs[1] = proof2;
+        bytes32[] memory proof = new bytes32[](2);
+        proof[0] = _hashLeaf(members[1], amounts[1]);
+        proof[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
+        proofs[0] = proofs[1] = proof;
 
         vm.expectEmit(true, true, true, true);
-        emit DropClaimed(dropId, member, address(token), amount1);
+        emit DropClaimed(dropId1, member, address(token), amounts[0]);
         vm.expectEmit(true, true, true, true);
-        emit DropClaimed(dropId, member, address(token), amount2);
+        emit DropClaimed(dropId2, member, address(token), amounts[0]);
 
         vm.prank(member);
         dropper.batchClaim(dropIds, claimAmounts, proofs);
 
-        assertEq(token.balanceOf(member), amount1 + amount2);
-        assertEq(token.balanceOf(address(dropper)), 1000e18 - (amount1 + amount2));
+        assertEq(token.balanceOf(member), amounts[0] * 2);
+        assertEq(token.balanceOf(address(dropper)), 2000e18 - amounts[0] * 2);
     }
 
     function testBatchClaimArityMismatch() public {
@@ -242,7 +236,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testRefundToRecipient() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         vm.warp(block.timestamp + 3601);
 
@@ -258,27 +252,22 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testRefundToRecipientDropStillLive() public {
-        testCreateDrop();
+        uint256 dropId = testCreateDrop();
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.DropStillLive.selector));
         dropper.refundToRecipient(dropId);
     }
 
     function testRefundToRecipientAllTokensClaimed() public {
-        testCreateDrop();
+        deal(address(token), address(this), amounts[0]);
+        token.approve(address(dropper), amounts[0]);
+        uint256 dropId = dropper.createDrop(
+            _hashLeaf(members[0], amounts[0]), amounts[0], address(token), block.timestamp + 3600, address(this), "someURI"
+        );
 
-        bytes32[][] memory proofs = new bytes32[][](4);
-        for (uint256 i = 0; i < 4; i++) {
-            proofs[i] = new bytes32[](2);
-            proofs[i][0] = _hashLeaf(members[(i + 1) % 4], amounts[(i + 1) % 4]);
-            proofs[i][1] = _hashNode(
-                _hashLeaf(members[(i + 2) % 4], amounts[(i + 2) % 4]),
-                _hashLeaf(members[(i + 3) % 4], amounts[(i + 3) % 4])
-            );
 
-            vm.prank(members[i]);
-            dropper.claim(dropId, amounts[i], proofs[i]);
-        }
+        vm.prank(members[0]);
+        dropper.claim(dropId, amounts[0], new bytes32[](0));
 
         vm.warp(block.timestamp + 3601);
 
