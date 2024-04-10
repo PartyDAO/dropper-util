@@ -49,10 +49,13 @@ contract Dropper {
 
     function refundToRecipient(uint256 dropId) external {
         require(_drops[dropId].expirationTimestamp <= block.timestamp, "Dropper: still live");
+        require(_drops[dropId].totalToken > _drops[dropId].claimedTokens, "Dropper: all tokens claimed");
 
         IERC20(_drops[dropId].tokenAddress).transfer(
             _drops[dropId].expirationRecipient, _drops[dropId].totalToken - _drops[dropId].claimedTokens
         );
+
+        _drops[dropId].claimedTokens = _drops[dropId].totalToken;
     }
 
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
