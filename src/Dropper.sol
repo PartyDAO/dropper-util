@@ -8,7 +8,7 @@ contract Dropper {
     event DropCreated(
         uint256 indexed dropId,
         bytes32 merkleRoot,
-        uint256 totalToken,
+        uint256 totalTokens,
         address indexed tokenAddress,
         uint256 expirationTimestamp,
         address expirationRecipient,
@@ -17,12 +17,24 @@ contract Dropper {
 
     struct DropData {
         bytes32 merkleRoot;
-        uint256 totalToken;
+        uint256 totalTokens;
         uint256 claimedTokens;
         address tokenAddress;
         uint256 expirationTimestamp;
         address expirationRecipient;
     }
+
+    error MerkleRootNotSet();
+    error TotalTokenIsZero();
+    error TokenAddressIsZero();
+    error ExpirationTimestampInPast();
+    error DropStillLive();
+    error AllTokensClaimed();
+    error DropExpired();
+    error DropAlreadyClaimed();
+    error InsufficientTokensRemaining();
+    error InvalidMerkleProof();
+    error ArityMismatch();
 
     mapping(uint256 => DropData) private _drops;
     mapping(uint256 => mapping(address => bool)) private _claimed;
@@ -30,7 +42,7 @@ contract Dropper {
 
     function createDrop(
         bytes32 merkleRoot,
-        uint256 totalToken,
+        uint256 totalTokens,
         address tokenAddress,
         uint256 expirationTimestamp,
         address expirationRecipient,
@@ -39,18 +51,18 @@ contract Dropper {
         external
         returns (uint256 dropId)
     {
-        require(merkleRoot != bytes32(0), "Dropper: merkleRoot not set");
-        require(totalToken > 0, "Dropper: totalToken is 0");
-        require(tokenAddress != address(0), "Dropper: tokenAddress is 0");
-        require(expirationTimestamp > block.timestamp, "Dropper: expirationTimestamp is in the past");
+        if (merkleRoot == bytes32(0)) revert MerkleRootNotSet();
+        if (totalTokens == 0) revert TotalTokenIsZero();
+        if (tokenAddress == address(0)) revert TokenAddressIsZero();
+        if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
 
-        IERC20(tokenAddress).transferFrom(msg.sender, address(this), totalToken);
+        IERC20(tokenAddress).transferFrom(msg.sender, address(this), totalTokens);
 
         dropId = ++numDrops;
 
         _drops[dropId] = DropData({
             merkleRoot: merkleRoot,
-            totalToken: totalToken,
+            totalTokens: totalTokens,
             claimedTokens: 0,
             tokenAddress: tokenAddress,
             expirationTimestamp: expirationTimestamp,
@@ -58,30 +70,31 @@ contract Dropper {
         });
 
         emit DropCreated(
-            dropId, merkleRoot, totalToken, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI
+            dropId, merkleRoot, totalTokens, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI
         );
     }
 
     function refundToRecipient(uint256 dropId) external {
-        require(_drops[dropId].expirationTimestamp <= block.timestamp, "Dropper: still live");
-        require(_drops[dropId].totalToken > _drops[dropId].claimedTokens, "Dropper: all tokens claimed");
+        DropData storage drop = _drops[dropId];
+        if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
+        if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
 
         IERC20(_drops[dropId].tokenAddress).transfer(
-            _drops[dropId].expirationRecipient, _drops[dropId].totalToken - _drops[dropId].claimedTokens
+            _drops[dropId].expirationRecipient, _drops[dropId].totalTokens - _drops[dropId].claimedTokens
         );
 
-        _drops[dropId].claimedTokens = _drops[dropId].totalToken;
+        _drops[dropId].claimedTokens = _drops[dropId].totalTokens;
     }
 
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
         DropData storage drop = _drops[dropId];
 
-        require(drop.expirationTimestamp > block.timestamp, "Dropper: expired");
-        require(!_claimed[dropId][msg.sender], "Dropper: already claimed");
-        require(drop.claimedTokens + amount <= drop.totalToken, "Dropper: not enough tokens");
+        if (drop.expirationTimestamp <= block.timestamp) revert DropExpired();
+        if (_claimed[dropId][msg.sender]) revert DropAlreadyClaimed();
+        if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
-        require(MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf), "Dropper: invalid proof");
+        if (!MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf)) revert InvalidMerkleProof();
 
         _claimed[dropId][msg.sender] = true;
         drop.claimedTokens += amount;
@@ -96,7 +109,7 @@ contract Dropper {
     )
         external
     {
-        require(dropIds.length == amounts.length && dropIds.length == merkleProofs.length, "Dropper: arity mismatch");
+        if (dropIds.length != amounts.length || dropIds.length != merkleProofs.length) revert ArityMismatch();
 
         for (uint256 i = 0; i < dropIds.length; i++) {
             claim(dropIds[i], amounts[i], merkleProofs[i]);
