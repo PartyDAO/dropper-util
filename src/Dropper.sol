@@ -71,7 +71,13 @@ contract Dropper {
         IERC20(drop.tokenAddress).transfer(msg.sender, amount);
     }
 
-    function batchClaim(uint256[] calldata dropIds, uint256[] calldata amounts, bytes32[][] calldata merkleProofs) external {
+    function batchClaim(
+        uint256[] calldata dropIds,
+        uint256[] calldata amounts,
+        bytes32[][] calldata merkleProofs
+    )
+        external
+    {
         require(dropIds.length == amounts.length && dropIds.length == merkleProofs.length, "Dropper: arity mismatch");
 
         for (uint256 i = 0; i < dropIds.length; i++) {
