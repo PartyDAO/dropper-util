@@ -198,87 +198,71 @@ contract DropperTest is PRBTest, StdCheats {
         dropper.claim(dropId, amount, invalidProof);
     }
 
-    // function testBatchClaim() public {
-    //     uint256 dropId1 = testCreateDrop();
-    //     uint256 dropId2 = testCreateDrop();
+    function testBatchClaim(address[4] memory recipients, uint40[4] memory amounts) public {
+        (uint256 dropId1, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+        (uint256 dropId2,) = testCreateDrop(recipients, amounts);
 
-    //     address member = members[0];
+        address member = recipients[0];
 
-    //     uint256[] memory dropIds = new uint256[](2);
-    //     dropIds[0] = dropId1;
-    //     dropIds[1] = dropId2;
-    //     uint256[] memory claimAmounts = new uint256[](2);
-    //     claimAmounts[0] = claimAmounts[1] = amounts[0];
-    //     bytes32[][] memory proofs = new bytes32[][](2);
-    //     bytes32[] memory proof = new bytes32[](2);
-    //     proof[0] = _hashLeaf(members[1], amounts[1]);
-    //     proof[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
-    //     proofs[0] = proofs[1] = proof;
+        uint256[] memory dropIds = new uint256[](2);
+        dropIds[0] = dropId1;
+        dropIds[1] = dropId2;
+        uint256[] memory claimAmounts = new uint256[](2);
+        claimAmounts[0] = claimAmounts[1] = amounts[0];
+        bytes32[][] memory proofs = new bytes32[][](2);
+        proofs[0] = proofs[1] = merkle.getProof(merkleLeaves, 0);
 
-    //     vm.expectEmit(true, true, true, true);
-    //     emit DropClaimed(dropId1, member, address(token), amounts[0]);
-    //     vm.expectEmit(true, true, true, true);
-    //     emit DropClaimed(dropId2, member, address(token), amounts[0]);
+        vm.expectEmit(true, true, true, true);
+        emit DropClaimed(dropId1, member, address(token), amounts[0]);
+        vm.expectEmit(true, true, true, true);
+        emit DropClaimed(dropId2, member, address(token), amounts[0]);
 
-    //     vm.prank(member);
-    //     dropper.batchClaim(dropIds, claimAmounts, proofs);
+        vm.prank(member);
+        dropper.batchClaim(dropIds, claimAmounts, proofs);
 
-    //     assertEq(token.balanceOf(member), amounts[0] * 2);
-    //     assertEq(token.balanceOf(address(dropper)), 2000e18 - amounts[0] * 2);
-    // }
+        assertEq(token.balanceOf(member), uint256(amounts[0]) * 2);
+    }
 
-    // function testBatchClaimArityMismatch() public {
-    //     testCreateDrop();
+    function testBatchClaimArityMismatch() public {
+        uint256[] memory dropIds = new uint256[](1);
+        uint256[] memory invalidAmounts = new uint256[](2);
+        bytes32[][] memory proofs = new bytes32[][](2);
 
-    //     uint256[] memory dropIds = new uint256[](1);
-    //     uint256[] memory invalidAmounts = new uint256[](2);
-    //     bytes32[][] memory proofs = new bytes32[][](2);
+        vm.expectRevert(abi.encodeWithSelector(Dropper.ArityMismatch.selector));
+        dropper.batchClaim(dropIds, invalidAmounts, proofs);
+    }
 
-    //     vm.expectRevert(abi.encodeWithSelector(Dropper.ArityMismatch.selector));
-    //     dropper.batchClaim(dropIds, invalidAmounts, proofs);
-    // }
+    function testRefundToRecipient() public {
+        (uint256 dropId,) =
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
 
-    // function testRefundToRecipient() public {
-    //     uint256 dropId = testCreateDrop();
+        vm.warp(block.timestamp + 3601);
 
-    //     vm.warp(block.timestamp + 3601);
+        uint256 tokensToRefund = 3100;
 
-    //     uint256 tokensToRefund = 1000e18;
+        vm.expectEmit(true, true, true, true);
+        emit DropRefunded(dropId, address(this), address(token), tokensToRefund);
 
-    //     vm.expectEmit(true, true, true, true);
-    //     emit DropRefunded(dropId, address(this), address(token), tokensToRefund);
+        dropper.refundToRecipient(dropId);
 
-    //     dropper.refundToRecipient(dropId);
+        assertEq(token.balanceOf(address(dropper)), 0);
+        assertEq(token.balanceOf(address(this)), tokensToRefund);
+    }
 
-    //     assertEq(token.balanceOf(address(dropper)), 0);
-    //     assertEq(token.balanceOf(address(this)), 1000e18);
-    // }
+    function testRefundToRecipientDropStillLive() public {
+        (uint256 dropId,) =
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
 
-    // function testRefundToRecipientDropStillLive() public {
-    //     uint256 dropId = testCreateDrop();
+        vm.expectRevert(abi.encodeWithSelector(Dropper.DropStillLive.selector));
+        dropper.refundToRecipient(dropId);
+    }
 
-    //     vm.expectRevert(abi.encodeWithSelector(Dropper.DropStillLive.selector));
-    //     dropper.refundToRecipient(dropId);
-    // }
+    function testRefundToRecipientAllTokensClaimed() public {
+       testClaim([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
 
-    // function testRefundToRecipientAllTokensClaimed() public {
-    //     deal(address(token), address(this), amounts[0]);
-    //     token.approve(address(dropper), amounts[0]);
-    //     uint256 dropId = dropper.createDrop(
-    //         _hashLeaf(members[0], amounts[0]),
-    //         amounts[0],
-    //         address(token),
-    //         block.timestamp + 3600,
-    //         address(this),
-    //         "someURI"
-    //     );
+        vm.warp(block.timestamp + 3601);
 
-    //     vm.prank(members[0]);
-    //     dropper.claim(dropId, amounts[0], new bytes32[](0));
-
-    //     vm.warp(block.timestamp + 3601);
-
-    //     vm.expectRevert(abi.encodeWithSelector(Dropper.AllTokensClaimed.selector));
-    //     dropper.refundToRecipient(dropId);
-    // }
+        vm.expectRevert(abi.encodeWithSelector(Dropper.AllTokensClaimed.selector));
+        dropper.refundToRecipient(1);
+    }
 }
