@@ -15,6 +15,20 @@ contract Dropper {
         string merkleTreeURI
     );
 
+    event DropClaimed(
+        uint256 indexed dropId,
+        address indexed recipient,
+        address indexed tokenAddress,
+        uint256 amount
+    );
+
+    event DropRefunded(
+        uint256 indexed dropId,
+        address indexed recipient,
+        address indexed tokenAddress,
+        uint256 amount
+    );
+
     struct DropData {
         bytes32 merkleRoot;
         uint256 totalTokens;
@@ -79,11 +93,17 @@ contract Dropper {
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
         if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
 
-        IERC20(_drops[dropId].tokenAddress).transfer(
-            _drops[dropId].expirationRecipient, _drops[dropId].totalTokens - _drops[dropId].claimedTokens
+        address expirationRecipient = drop.expirationRecipient;
+        uint256 tokensToRefund = drop.totalTokens - drop.claimedTokens;
+        address tokenAddress = drop.tokenAddress;
+
+        IERC20(tokenAddress).transfer(
+            expirationRecipient, tokensToRefund
         );
 
-        _drops[dropId].claimedTokens = _drops[dropId].totalTokens;
+        drop.claimedTokens = drop.totalTokens;
+
+        emit DropRefunded(dropId, expirationRecipient, tokenAddress, tokensToRefund);
     }
 
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
@@ -99,7 +119,10 @@ contract Dropper {
         _claimed[dropId][msg.sender] = true;
         drop.claimedTokens += amount;
 
-        IERC20(drop.tokenAddress).transfer(msg.sender, amount);
+        address tokenAddress = drop.tokenAddress;
+        IERC20(tokenAddress).transfer(msg.sender, amount);
+
+        emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
     }
 
     function batchClaim(
