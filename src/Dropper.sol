@@ -5,6 +5,16 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract Dropper {
+    event DropCreated(
+        uint256 indexed dropId,
+        bytes32 merkleRoot,
+        uint256 totalToken,
+        address indexed tokenAddress,
+        uint256 expirationTimestamp,
+        address expirationRecipient,
+        string merkleTreeURI
+    );
+
     struct DropData {
         bytes32 merkleRoot;
         uint256 totalToken;
@@ -23,7 +33,8 @@ contract Dropper {
         uint256 totalToken,
         address tokenAddress,
         uint256 expirationTimestamp,
-        address expirationRecipient
+        address expirationRecipient,
+        string calldata merkleTreeURI
     )
         external
         returns (uint256 dropId)
@@ -45,6 +56,10 @@ contract Dropper {
             expirationTimestamp: expirationTimestamp,
             expirationRecipient: expirationRecipient
         });
+
+        emit DropCreated(
+            dropId, merkleRoot, totalToken, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI
+        );
     }
 
     function refundToRecipient(uint256 dropId) external {
