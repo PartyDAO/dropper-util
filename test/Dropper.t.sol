@@ -51,6 +51,7 @@ contract DropperTest is PRBTest, StdCheats {
                 if (i != j) {
                     vm.assume(recipients[i] != recipients[j]);
                 }
+                vm.assume(recipients[i] != address(dropper));
             }
         }
 
