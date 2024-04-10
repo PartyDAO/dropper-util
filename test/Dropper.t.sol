@@ -18,19 +18,9 @@ contract DropperTest is PRBTest, StdCheats {
         string merkleTreeURI
     );
 
-    event DropClaimed(
-        uint256 indexed dropId,
-        address indexed recipient,
-        address indexed tokenAddress,
-        uint256 amount
-    );
+    event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
-    event DropRefunded(
-        uint256 indexed dropId,
-        address indexed recipient,
-        address indexed tokenAddress,
-        uint256 amount
-    );
+    event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     Dropper dropper;
     MockERC20 token;
@@ -45,12 +35,7 @@ contract DropperTest is PRBTest, StdCheats {
         token = new MockERC20();
         token.initialize("Mock Token", "MTK", 18);
 
-        members = [
-            vm.addr(1),
-            vm.addr(2),
-            vm.addr(3),
-            vm.addr(4)
-        ];
+        members = [vm.addr(1), vm.addr(2), vm.addr(3), vm.addr(4)];
         amounts = [100e18, 200e18, 300e18, 400e18];
         merkleRoot = _constructTree(members, amounts);
     }
@@ -82,9 +67,8 @@ contract DropperTest is PRBTest, StdCheats {
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
-        dropId = dropper.createDrop(
-            merkleRoot, 1000e18, address(token), block.timestamp + 3600, address(this), "someURI"
-        );
+        dropId =
+            dropper.createDrop(merkleRoot, 1000e18, address(token), block.timestamp + 3600, address(this), "someURI");
 
         assertEq(dropId, expectedDropId);
         assertEq(token.balanceOf(address(dropper)), balanceBefore + 1000e18);
@@ -205,7 +189,7 @@ contract DropperTest is PRBTest, StdCheats {
         dropIds[0] = dropId1;
         dropIds[1] = dropId2;
         uint256[] memory claimAmounts = new uint256[](2);
-        claimAmounts[0] = claimAmounts[1]= amounts[0];
+        claimAmounts[0] = claimAmounts[1] = amounts[0];
         bytes32[][] memory proofs = new bytes32[][](2);
         bytes32[] memory proof = new bytes32[](2);
         proof[0] = _hashLeaf(members[1], amounts[1]);
@@ -262,9 +246,13 @@ contract DropperTest is PRBTest, StdCheats {
         deal(address(token), address(this), amounts[0]);
         token.approve(address(dropper), amounts[0]);
         uint256 dropId = dropper.createDrop(
-            _hashLeaf(members[0], amounts[0]), amounts[0], address(token), block.timestamp + 3600, address(this), "someURI"
+            _hashLeaf(members[0], amounts[0]),
+            amounts[0],
+            address(token),
+            block.timestamp + 3600,
+            address(this),
+            "someURI"
         );
-
 
         vm.prank(members[0]);
         dropper.claim(dropId, amounts[0], new bytes32[](0));

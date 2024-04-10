@@ -15,19 +15,9 @@ contract Dropper {
         string merkleTreeURI
     );
 
-    event DropClaimed(
-        uint256 indexed dropId,
-        address indexed recipient,
-        address indexed tokenAddress,
-        uint256 amount
-    );
+    event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
-    event DropRefunded(
-        uint256 indexed dropId,
-        address indexed recipient,
-        address indexed tokenAddress,
-        uint256 amount
-    );
+    event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     struct DropData {
         bytes32 merkleRoot;
@@ -97,9 +87,7 @@ contract Dropper {
         uint256 tokensToRefund = drop.totalTokens - drop.claimedTokens;
         address tokenAddress = drop.tokenAddress;
 
-        IERC20(tokenAddress).transfer(
-            expirationRecipient, tokensToRefund
-        );
+        IERC20(tokenAddress).transfer(expirationRecipient, tokensToRefund);
 
         drop.claimedTokens = drop.totalTokens;
 
