@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { PRBTest, Helpers } from "@prb/test/src/PRBTest.sol";
-import { console2 } from "forge-std/src/console2.sol";
+import { PRBTest } from "@prb/test/src/PRBTest.sol";
 import { StdCheats } from "forge-std/src/StdCheats.sol";
 import { Dropper } from "../src/Dropper.sol";
 import { MockERC20 } from "forge-std//src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
-import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract DropperTest is PRBTest, StdCheats {
     event DropCreated(
