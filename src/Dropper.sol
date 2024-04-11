@@ -11,7 +11,8 @@ contract Dropper {
         bytes32 merkleRoot,
         uint256 totalTokens,
         address indexed tokenAddress,
-        uint256 expirationTimestamp,
+        uint40 startTimestamp,
+        uint40 expirationTimestamp,
         address expirationRecipient,
         string merkleTreeURI
     );
@@ -25,8 +26,17 @@ contract Dropper {
         uint256 totalTokens;
         uint256 claimedTokens;
         address tokenAddress;
-        uint256 expirationTimestamp;
+        uint40 startTimestamp;
+        uint40 expirationTimestamp;
         address expirationRecipient;
+    }
+
+    struct PermitArgs {
+        uint256 amount;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
     }
 
     error InsufficientPermitAmount();
@@ -36,7 +46,7 @@ contract Dropper {
     error ExpirationTimestampInPast();
     error DropStillLive();
     error AllTokensClaimed();
-    error DropExpired();
+    error DropNotLive();
     error DropAlreadyClaimed();
     error InsufficientTokensRemaining();
     error InvalidMerkleProof();
@@ -47,34 +57,39 @@ contract Dropper {
     uint256 public numDrops;
 
     function permitAndCreateDrop(
-        uint256 permitAmount,
-        uint256 permitDeadline,
-        uint8 permitV,
-        bytes32 permitR,
-        bytes32 permitS,
+        PermitArgs calldata permitArgs,
         bytes32 merkleRoot,
         uint256 totalTokens,
         address tokenAddress,
-        uint256 expirationTimestamp,
+        uint40 startTimestamp,
+        uint40 expirationTimestamp,
         address expirationRecipient,
         string calldata merkleTreeURI
     )
         external
     {
         // Revert if insufficient approval will be given by permit
-        if (permitAmount < totalTokens) revert InsufficientPermitAmount();
+        if (permitArgs.amount < totalTokens) revert InsufficientPermitAmount();
 
-        IERC20Permit(tokenAddress).permit(
-            msg.sender, address(this), permitAmount, permitDeadline, permitV, permitR, permitS
+        _callPermit(tokenAddress, permitArgs);
+
+        createDrop(
+            merkleRoot,
+            totalTokens,
+            tokenAddress,
+            startTimestamp,
+            expirationTimestamp,
+            expirationRecipient,
+            merkleTreeURI
         );
-        createDrop(merkleRoot, totalTokens, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI);
     }
 
     function createDrop(
         bytes32 merkleRoot,
         uint256 totalTokens,
         address tokenAddress,
-        uint256 expirationTimestamp,
+        uint40 startTimestamp,
+        uint40 expirationTimestamp,
         address expirationRecipient,
         string calldata merkleTreeURI
     )
@@ -95,12 +110,20 @@ contract Dropper {
             totalTokens: totalTokens,
             claimedTokens: 0,
             tokenAddress: tokenAddress,
+            startTimestamp: startTimestamp,
             expirationTimestamp: expirationTimestamp,
             expirationRecipient: expirationRecipient
         });
 
         emit DropCreated(
-            dropId, merkleRoot, totalTokens, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI
+            dropId,
+            merkleRoot,
+            totalTokens,
+            tokenAddress,
+            startTimestamp,
+            expirationTimestamp,
+            expirationRecipient,
+            merkleTreeURI
         );
     }
 
@@ -123,7 +146,7 @@ contract Dropper {
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
         DropData storage drop = _drops[dropId];
 
-        if (drop.expirationTimestamp <= block.timestamp) revert DropExpired();
+        if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
         if (_claimed[dropId][msg.sender]) revert DropAlreadyClaimed();
         if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
@@ -151,5 +174,11 @@ contract Dropper {
         for (uint256 i = 0; i < dropIds.length; i++) {
             claim(dropIds[i], amounts[i], merkleProofs[i]);
         }
+    }
+
+    function _callPermit(address tokenAddress, PermitArgs calldata permitArgs) internal {
+        IERC20Permit(tokenAddress).permit(
+            msg.sender, address(this), permitArgs.amount, permitArgs.deadline, permitArgs.v, permitArgs.r, permitArgs.s
+        );
     }
 }
