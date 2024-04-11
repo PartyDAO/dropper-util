@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.25;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -54,8 +54,20 @@ contract Dropper {
 
     mapping(uint256 => DropData) private _drops;
     mapping(uint256 => mapping(address => bool)) private _claimed;
+
+    /// @notice The number of drops created on this contract
     uint256 public numDrops;
 
+    /// @notice Permits the token and creates a new drop with the given parameters
+    /// @param permitArgs The permit arguments to be passed to the token's permit function
+    /// @param merkleRoot The merkle root of the merkle tree for the drop
+    /// @param totalTokens The total number of tokens to be dropped
+    /// @param tokenAddress The address of the token to be dropped
+    /// @param startTimestamp The timestamp at which the drop will become live
+    /// @param expirationTimestamp The timestamp at which the drop will expire
+    /// @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
+    /// @param merkleTreeURI The URI of the full merkle tree for the drop
+    /// @return dropId The ID of the newly created drop
     function permitAndCreateDrop(
         PermitArgs calldata permitArgs,
         bytes32 merkleRoot,
@@ -67,13 +79,14 @@ contract Dropper {
         string calldata merkleTreeURI
     )
         external
+        returns (uint256)
     {
         // Revert if insufficient approval will be given by permit
         if (permitArgs.amount < totalTokens) revert InsufficientPermitAmount();
 
         _callPermit(tokenAddress, permitArgs);
 
-        createDrop(
+        return createDrop(
             merkleRoot,
             totalTokens,
             tokenAddress,
@@ -84,6 +97,17 @@ contract Dropper {
         );
     }
 
+    /**
+     * @notice Create a new drop with the given parameters
+     * @param merkleRoot The merkle root of the merkle tree for the drop
+     * @param totalTokens The total number of tokens to be dropped
+     * @param tokenAddress The address of the token to be dropped
+     * @param startTimestamp The timestamp at which the drop will become live
+     * @param expirationTimestamp The timestamp at which the drop will expire
+     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
+     * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @return dropId The ID of the newly created drop
+     */
     function createDrop(
         bytes32 merkleRoot,
         uint256 totalTokens,
@@ -127,6 +151,10 @@ contract Dropper {
         );
     }
 
+    /**
+     * @notice Refund the remaining tokens to the expiration recipient after the expiration timestamp
+     * @param dropId The drop ID of the drop to refund
+     */
     function refundToRecipient(uint256 dropId) external {
         DropData storage drop = _drops[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
@@ -143,6 +171,12 @@ contract Dropper {
         emit DropRefunded(dropId, expirationRecipient, tokenAddress, tokensToRefund);
     }
 
+    /**
+     * @notice Claim tokens from a drop for `msg.sender`
+     * @param dropId The drop ID to claim
+     * @param amount The amount of tokens to claim
+     * @param merkleProof The merkle inclusion proof
+     */
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
         DropData storage drop = _drops[dropId];
 
@@ -162,6 +196,12 @@ contract Dropper {
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
     }
 
+    /**
+     * @notice Claim multiple drops for `msg.sender`
+     * @param dropIds The drop IDs to claim
+     * @param amounts The amounts of tokens to claim
+     * @param merkleProofs The merkle inclusion proofs
+     */
     function batchClaim(
         uint256[] calldata dropIds,
         uint256[] calldata amounts,
