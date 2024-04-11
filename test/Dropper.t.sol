@@ -304,7 +304,10 @@ contract DropperTest is PRBTest, StdCheats {
 
     function test_permitAndCreateDrop_works(uint256 creatorPk) external {
         vm.assume(creatorPk != 0);
-        vm.assume(creatorPk < 115792089237316195423570985008687907852837564279074904382605163141518161494337);
+        vm.assume(
+            creatorPk
+                < 115_792_089_237_316_195_423_570_985_008_687_907_852_837_564_279_074_904_382_605_163_141_518_161_494_337
+        );
         Vm.Wallet memory creator = vm.createWallet(creatorPk, "Creator");
 
         address[4] memory recipients = [address(1), address(2), address(3), address(4)];
