@@ -2,6 +2,7 @@
 pragma solidity >=0.8.25;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract Dropper {
@@ -28,6 +29,7 @@ contract Dropper {
         address expirationRecipient;
     }
 
+    error InsufficientPermitAmount();
     error MerkleRootNotSet();
     error TotalTokenIsZero();
     error TokenAddressIsZero();
@@ -44,7 +46,12 @@ contract Dropper {
     mapping(uint256 => mapping(address => bool)) private _claimed;
     uint256 public numDrops;
 
-    function createDrop(
+    function permitAndCreateDrop(
+        uint256 permitAmount,
+        uint256 permitDeadline,
+        uint8 permitV,
+        bytes32 permitR,
+        bytes32 permitS,
         bytes32 merkleRoot,
         uint256 totalTokens,
         address tokenAddress,
@@ -53,6 +60,25 @@ contract Dropper {
         string calldata merkleTreeURI
     )
         external
+    {
+        // Revert if insufficient approval will be given by permit
+        if (permitAmount < totalTokens) revert InsufficientPermitAmount();
+
+        IERC20Permit(tokenAddress).permit(
+            msg.sender, address(this), permitAmount, permitDeadline, permitV, permitR, permitS
+        );
+        createDrop(merkleRoot, totalTokens, tokenAddress, expirationTimestamp, expirationRecipient, merkleTreeURI);
+    }
+
+    function createDrop(
+        bytes32 merkleRoot,
+        uint256 totalTokens,
+        address tokenAddress,
+        uint256 expirationTimestamp,
+        address expirationRecipient,
+        string calldata merkleTreeURI
+    )
+        public
         returns (uint256 dropId)
     {
         if (merkleRoot == bytes32(0)) revert MerkleRootNotSet();
