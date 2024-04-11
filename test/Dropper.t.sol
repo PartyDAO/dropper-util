@@ -174,17 +174,55 @@ contract DropperTest is PRBTest, StdCheats {
         vm.stopPrank();
     }
 
-    // function testClaimInsufficientTokensRemaining(address[4] memory recipients, uint40[4] memory amounts) public {
-    //     (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+    function testClaimInsufficientTokensRemaining(address[4] memory recipients, uint40[4] memory amounts) public {
+        for (uint256 i = 0; i < recipients.length; i++) {
+            for (uint256 j = i; j < recipients.length; j++) {
+                if (i != j) {
+                    vm.assume(recipients[i] != recipients[j]);
+                }
+                vm.assume(recipients[i] != address(dropper));
+            }
+        }
 
-    //     uint256 amount = 1000e18 + 1;
-    //     bytes32[] memory proof = new bytes32[](2);
-    //     proof[0] = _hashLeaf(members[1], amounts[1]);
-    //     proof[1] = _hashNode(_hashLeaf(members[2], amounts[2]), _hashLeaf(members[3], amounts[3]));
+        bytes32[] memory merkleLeaves = new bytes32[](4);
 
-    //     vm.expectRevert(abi.encodeWithSelector(Dropper.InsufficientTokensRemaining.selector));
-    //     dropper.claim(dropId, amount, proof);
-    // }
+        uint256 totalDropAmount = 1;
+        for (uint256 i = 0; i < 4; i++) {
+            vm.assume(recipients[i] != address(0));
+            vm.assume(amounts[i] > 1);
+            merkleLeaves[i] = _hashLeaf(recipients[i], amounts[i]);
+        }
+
+        bytes32 merkleRoot = merkle.getRoot(merkleLeaves);
+
+        deal(address(token), address(this), totalDropAmount);
+        token.approve(address(dropper), totalDropAmount);
+
+        uint256 expectedDropId = dropper.numDrops() + 1;
+        vm.expectEmit(true, true, true, true);
+        emit DropCreated(
+            expectedDropId,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            block.timestamp + 3600,
+            address(this),
+            "someURI"
+        );
+
+        uint256 balanceBefore = token.balanceOf(address(dropper));
+        uint256 dropId = dropper.createDrop(
+            merkleRoot, totalDropAmount, address(token), block.timestamp + 3600, address(this), "someURI"
+        );
+
+        assertEq(dropId, expectedDropId);
+        assertEq(token.balanceOf(address(dropper)), balanceBefore + totalDropAmount);
+
+        bytes32[] memory proof = merkle.getProof(merkleLeaves, 0);
+        vm.expectRevert(abi.encodeWithSelector(Dropper.InsufficientTokensRemaining.selector));
+        vm.prank(recipients[0]);
+        dropper.claim(dropId, amounts[0], proof);
+    }
 
     function testClaimInvalidMerkleProof(address[4] memory recipients, uint40[4] memory amounts) public {
         (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
