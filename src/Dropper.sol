@@ -44,6 +44,7 @@ contract Dropper {
     error TotalTokenIsZero();
     error TokenAddressIsZero();
     error ExpirationTimestampInPast();
+    error StartBeforeEnd();
     error DropStillLive();
     error AllTokensClaimed();
     error DropNotLive();
@@ -124,6 +125,7 @@ contract Dropper {
         if (totalTokens == 0) revert TotalTokenIsZero();
         if (tokenAddress == address(0)) revert TokenAddressIsZero();
         if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
+        if (expirationTimestamp <= startTimestamp) revert StartBeforeEnd();
 
         IERC20(tokenAddress).transferFrom(msg.sender, address(this), totalTokens);
 
