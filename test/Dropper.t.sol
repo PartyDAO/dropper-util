@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { PRBTest } from "@prb/test/src/PRBTest.sol";
+import { PRBTest, Vm } from "@prb/test/src/PRBTest.sol";
 import { StdCheats } from "forge-std/src/StdCheats.sol";
 import { Dropper } from "../src/Dropper.sol";
-import { MockERC20 } from "forge-std//src/mocks/MockERC20.sol";
+import { MockERC20 } from "forge-std/src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
 
 contract DropperTest is PRBTest, StdCheats {
@@ -300,5 +300,76 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.AllTokensClaimed.selector));
         dropper.refundToRecipient(1);
+    }
+
+    function test_permitAndCreateDrop_works(uint256 creatorPk) external {
+        vm.assume(creatorPk != 0);
+        vm.assume(creatorPk < 115792089237316195423570985008687907852837564279074904382605163141518161494337);
+        Vm.Wallet memory creator = vm.createWallet(creatorPk, "Creator");
+
+        address[4] memory recipients = [address(1), address(2), address(3), address(4)];
+        uint40[4] memory amounts = [uint40(100), 1000, 1000, 1000];
+
+        bytes32[] memory merkleLeaves = new bytes32[](4);
+
+        uint256 totalDropAmount;
+        for (uint256 i = 0; i < 4; i++) {
+            merkleLeaves[i] = _hashLeaf(recipients[i], amounts[i]);
+            totalDropAmount += amounts[i];
+        }
+
+        bytes32 merkleRoot = merkle.getRoot(merkleLeaves);
+
+        deal(address(token), creator.addr, totalDropAmount);
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(creator, address(token), address(dropper), totalDropAmount, block.timestamp + 1);
+
+        uint256 expectedDropId = dropper.numDrops() + 1;
+        vm.expectEmit(true, true, true, true);
+        emit DropCreated(
+            expectedDropId,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            block.timestamp + 3600,
+            address(this),
+            "someURI"
+        );
+
+        vm.prank(creator.addr);
+        dropper.permitAndCreateDrop(
+            totalDropAmount,
+            block.timestamp + 1,
+            v,
+            r,
+            s,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            block.timestamp + 3600,
+            address(this),
+            "someURI"
+        );
+    }
+
+    function _signPermit(
+        Vm.Wallet memory wallet,
+        address permitToken,
+        address spender,
+        uint256 value,
+        uint256 deadline
+    )
+        internal
+        returns (uint8, bytes32, bytes32)
+    {
+        uint256 nonce = MockERC20(permitToken).nonces(wallet.addr);
+        bytes32 permitTypeHash =
+            keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+        bytes32 domainSeparator = token.DOMAIN_SEPARATOR();
+
+        bytes32 structHash = keccak256(abi.encode(permitTypeHash, wallet.addr, spender, value, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+
+        return vm.sign(wallet, digest);
     }
 }
