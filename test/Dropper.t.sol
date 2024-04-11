@@ -296,7 +296,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testRefundToRecipientAllTokensClaimed() public {
-       testClaim([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
+        testClaim([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
 
         vm.warp(block.timestamp + 3601);
 
