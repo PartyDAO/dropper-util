@@ -13,7 +13,8 @@ contract DropperTest is PRBTest, StdCheats {
         bytes32 merkleRoot,
         uint256 totalTokens,
         address indexed tokenAddress,
-        uint256 expirationTimestamp,
+        uint40 startTimestamp,
+        uint40 expirationTimestamp,
         address expirationRecipient,
         string merkleTreeURI
     );
@@ -75,14 +76,21 @@ contract DropperTest is PRBTest, StdCheats {
             merkleRoot,
             totalDropAmount,
             address(token),
-            block.timestamp + 3600,
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
             address(this),
             "someURI"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
         dropId = dropper.createDrop(
-            merkleRoot, totalDropAmount, address(token), block.timestamp + 3600, address(this), "someURI"
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
         );
 
         assertEq(dropId, expectedDropId);
@@ -94,7 +102,15 @@ contract DropperTest is PRBTest, StdCheats {
         token.approve(address(dropper), 1000e18);
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.MerkleRootNotSet.selector));
-        dropper.createDrop(bytes32(0), 1000e18, address(token), block.timestamp + 3600, address(this), "someURI");
+        dropper.createDrop(
+            bytes32(0),
+            1000e18,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
+        );
     }
 
     function testCreateDropTotalTokenIsZero() public {
@@ -102,7 +118,15 @@ contract DropperTest is PRBTest, StdCheats {
         token.approve(address(dropper), 1000e18);
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.TotalTokenIsZero.selector));
-        dropper.createDrop(bytes32(uint256(1)), 0, address(token), block.timestamp + 3600, address(this), "someURI");
+        dropper.createDrop(
+            bytes32(uint256(1)),
+            0,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
+        );
     }
 
     function testCreateDropTokenAddressIsZero() public {
@@ -110,7 +134,15 @@ contract DropperTest is PRBTest, StdCheats {
         token.approve(address(dropper), 1000e18);
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.TokenAddressIsZero.selector));
-        dropper.createDrop(bytes32(uint256(1)), 1000e18, address(0), block.timestamp + 3600, address(this), "someURI");
+        dropper.createDrop(
+            bytes32(uint256(1)),
+            1000e18,
+            address(0),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
+        );
     }
 
     function testCreateDropExpirationTimestampInPast() public {
@@ -118,7 +150,15 @@ contract DropperTest is PRBTest, StdCheats {
         token.approve(address(dropper), 1000e18);
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.ExpirationTimestampInPast.selector));
-        dropper.createDrop(bytes32(uint256(1)), 1000e18, address(token), block.timestamp - 1, address(this), "someURI");
+        dropper.createDrop(
+            bytes32(uint256(1)),
+            1000e18,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp) - 1,
+            address(this),
+            "someURI"
+        );
     }
 
     function testClaim(address[4] memory recipients, uint40[4] memory amounts) public {
@@ -152,7 +192,7 @@ contract DropperTest is PRBTest, StdCheats {
 
         bytes32[] memory proof = merkle.getProof(merkleLeaves, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(Dropper.DropExpired.selector));
+        vm.expectRevert(abi.encodeWithSelector(Dropper.DropNotLive.selector));
         vm.prank(recipients[0]);
         dropper.claim(dropId, amount, proof);
     }
@@ -203,14 +243,21 @@ contract DropperTest is PRBTest, StdCheats {
             merkleRoot,
             totalDropAmount,
             address(token),
-            block.timestamp + 3600,
+            uint40(block.timestamp),
+            uint40(block.timestamp) + 3600,
             address(this),
             "someURI"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
         uint256 dropId = dropper.createDrop(
-            merkleRoot, totalDropAmount, address(token), block.timestamp + 3600, address(this), "someURI"
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
         );
 
         assertEq(dropId, expectedDropId);
@@ -285,6 +332,19 @@ contract DropperTest is PRBTest, StdCheats {
         assertEq(token.balanceOf(address(this)), tokensToRefund);
     }
 
+    function test_createDrop_fail_endBeforeStart() external {
+        vm.expectRevert(Dropper.EndBeforeStart.selector);
+        dropper.createDrop(
+            bytes32(uint256(2)),
+            1e5,
+            address(token),
+            uint40(block.timestamp + 3601),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
+        );
+    }
+
     function testRefundToRecipientDropStillLive() public {
         (uint256 dropId,) =
             testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
@@ -334,22 +394,63 @@ contract DropperTest is PRBTest, StdCheats {
             merkleRoot,
             totalDropAmount,
             address(token),
-            block.timestamp + 3600,
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
             address(this),
             "someURI"
         );
 
+        Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
+
         vm.prank(creator.addr);
         dropper.permitAndCreateDrop(
-            totalDropAmount,
-            block.timestamp + 1,
-            v,
-            r,
-            s,
+            permitArgs,
             merkleRoot,
             totalDropAmount,
             address(token),
-            block.timestamp + 3600,
+            uint40(block.timestamp),
+            uint40(block.timestamp) + 3600,
+            address(this),
+            "someURI"
+        );
+    }
+
+    function test_permitAndCreateDrop_reverts_insufficientPermitAmount(uint256 creatorPk) external {
+        vm.assume(creatorPk != 0);
+        vm.assume(
+            creatorPk
+                < 95_792_089_237_316_195_423_570_985_008_687_907_852_837_564_279_074_904_382_605_163_141_518_161_494_337
+        );
+        Vm.Wallet memory creator = vm.createWallet(creatorPk, "Creator");
+
+        address[4] memory recipients = [address(1), address(2), address(3), address(4)];
+        uint40[4] memory amounts = [uint40(100), 1000, 1000, 1000];
+
+        bytes32[] memory merkleLeaves = new bytes32[](4);
+
+        uint256 totalDropAmount;
+        for (uint256 i = 0; i < 4; i++) {
+            merkleLeaves[i] = _hashLeaf(recipients[i], amounts[i]);
+            totalDropAmount += amounts[i];
+        }
+
+        bytes32 merkleRoot = merkle.getRoot(merkleLeaves);
+
+        deal(address(token), creator.addr, totalDropAmount);
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(creator, address(token), address(dropper), totalDropAmount - 1, block.timestamp + 1);
+        Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount - 1, block.timestamp + 1, v, r, s);
+
+        vm.prank(creator.addr);
+        vm.expectRevert(Dropper.InsufficientPermitAmount.selector);
+        dropper.permitAndCreateDrop(
+            permitArgs,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp) + 3600,
             address(this),
             "someURI"
         );
