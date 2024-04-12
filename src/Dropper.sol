@@ -4,8 +4,11 @@ pragma solidity >=0.8.25;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract Dropper {
+    using SafeERC20 for IERC20;
+
     event DropCreated(
         uint256 indexed dropId,
         bytes32 merkleRoot,
@@ -134,7 +137,7 @@ contract Dropper {
         if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
         if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
 
-        IERC20(tokenAddress).transferFrom(msg.sender, address(this), totalTokens);
+        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalTokens);
 
         dropId = ++numDrops;
 
@@ -174,7 +177,7 @@ contract Dropper {
         drop.claimedTokens = drop.totalTokens;
         address tokenAddress = drop.tokenAddress;
 
-        IERC20(tokenAddress).transfer(expirationRecipient, tokensToRefund);
+        IERC20(tokenAddress).safeTransfer(expirationRecipient, tokensToRefund);
 
         emit DropRefunded(dropId, expirationRecipient, tokenAddress, tokensToRefund);
     }
@@ -199,7 +202,7 @@ contract Dropper {
         drop.claimedTokens += amount;
 
         address tokenAddress = drop.tokenAddress;
-        IERC20(tokenAddress).transfer(msg.sender, amount);
+        IERC20(tokenAddress).safeTransfer(msg.sender, amount);
 
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
     }
