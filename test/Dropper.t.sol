@@ -415,6 +415,47 @@ contract DropperTest is PRBTest, StdCheats {
         );
     }
 
+    function test_permitAndCreateDrop_reverts_insufficientPermitAmount(uint256 creatorPk) external {
+        vm.assume(creatorPk != 0);
+        vm.assume(
+            creatorPk
+                < 95_792_089_237_316_195_423_570_985_008_687_907_852_837_564_279_074_904_382_605_163_141_518_161_494_337
+        );
+        Vm.Wallet memory creator = vm.createWallet(creatorPk, "Creator");
+
+        address[4] memory recipients = [address(1), address(2), address(3), address(4)];
+        uint40[4] memory amounts = [uint40(100), 1000, 1000, 1000];
+
+        bytes32[] memory merkleLeaves = new bytes32[](4);
+
+        uint256 totalDropAmount;
+        for (uint256 i = 0; i < 4; i++) {
+            merkleLeaves[i] = _hashLeaf(recipients[i], amounts[i]);
+            totalDropAmount += amounts[i];
+        }
+
+        bytes32 merkleRoot = merkle.getRoot(merkleLeaves);
+
+        deal(address(token), creator.addr, totalDropAmount);
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(creator, address(token), address(dropper), totalDropAmount - 1, block.timestamp + 1);
+        Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount - 1, block.timestamp + 1, v, r, s);
+
+        vm.prank(creator.addr);
+        vm.expectRevert(Dropper.InsufficientPermitAmount.selector);
+        dropper.permitAndCreateDrop(
+            permitArgs,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp) + 3600,
+            address(this),
+            "someURI"
+        );
+    }
+
     function _signPermit(
         Vm.Wallet memory wallet,
         address permitToken,
