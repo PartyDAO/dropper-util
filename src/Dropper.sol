@@ -22,12 +22,19 @@ contract Dropper {
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     struct DropData {
+        // Merkle root for the token drop
         bytes32 merkleRoot;
+        // Total number of tokens to be dropped
         uint256 totalTokens;
+        // Number of tokens claimed so far
         uint256 claimedTokens;
+        // Address of the token to be dropped
         address tokenAddress;
+        // Timestamp at which the drop will become live
         uint40 startTimestamp;
+        // Timestamp at which the drop will expire
         uint40 expirationTimestamp;
+        // Address to which the remaining tokens will be refunded after expiration
         address expirationRecipient;
     }
 
