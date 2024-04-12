@@ -171,11 +171,10 @@ contract Dropper {
 
         address expirationRecipient = drop.expirationRecipient;
         uint256 tokensToRefund = drop.totalTokens - drop.claimedTokens;
+        drop.claimedTokens = drop.totalTokens;
         address tokenAddress = drop.tokenAddress;
 
         IERC20(tokenAddress).transfer(expirationRecipient, tokensToRefund);
-
-        drop.claimedTokens = drop.totalTokens;
 
         emit DropRefunded(dropId, expirationRecipient, tokenAddress, tokensToRefund);
     }
