@@ -332,6 +332,19 @@ contract DropperTest is PRBTest, StdCheats {
         assertEq(token.balanceOf(address(this)), tokensToRefund);
     }
 
+    function test_createDrop_fail_endBeforeStart() external {
+        vm.expectRevert(Dropper.EndBeforeStart.selector);
+        dropper.createDrop(
+            bytes32(uint256(2)),
+            1e5,
+            address(token),
+            uint40(block.timestamp + 3601),
+            uint40(block.timestamp + 3600),
+            address(this),
+            "someURI"
+        );
+    }
+
     function testRefundToRecipientDropStillLive() public {
         (uint256 dropId,) =
             testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);

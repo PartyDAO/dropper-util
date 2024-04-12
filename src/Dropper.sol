@@ -44,7 +44,7 @@ contract Dropper {
     error TotalTokenIsZero();
     error TokenAddressIsZero();
     error ExpirationTimestampInPast();
-    error StartBeforeEnd();
+    error EndBeforeStart();
     error DropStillLive();
     error AllTokensClaimed();
     error DropNotLive();
@@ -125,7 +125,7 @@ contract Dropper {
         if (totalTokens == 0) revert TotalTokenIsZero();
         if (tokenAddress == address(0)) revert TokenAddressIsZero();
         if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
-        if (expirationTimestamp <= startTimestamp) revert StartBeforeEnd();
+        if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
 
         IERC20(tokenAddress).transferFrom(msg.sender, address(this), totalTokens);
 
@@ -218,6 +218,7 @@ contract Dropper {
         }
     }
 
+    /// @dev Calls permit function on the token contract
     function _callPermit(address tokenAddress, PermitArgs calldata permitArgs) internal {
         IERC20Permit(tokenAddress).permit(
             msg.sender, address(this), permitArgs.amount, permitArgs.deadline, permitArgs.v, permitArgs.r, permitArgs.s
