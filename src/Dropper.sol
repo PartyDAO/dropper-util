@@ -69,16 +69,18 @@ contract Dropper {
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
 
-    /// @notice Permits the token and creates a new drop with the given parameters
-    /// @param permitArgs The permit arguments to be passed to the token's permit function
-    /// @param merkleRoot The merkle root of the merkle tree for the drop
-    /// @param totalTokens The total number of tokens to be dropped
-    /// @param tokenAddress The address of the token to be dropped
-    /// @param startTimestamp The timestamp at which the drop will become live
-    /// @param expirationTimestamp The timestamp at which the drop will expire
-    /// @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-    /// @param merkleTreeURI The URI of the full merkle tree for the drop
-    /// @return dropId The ID of the newly created drop
+    /**
+     * @notice Permits the token and creates a new drop with the given parameters
+     * @param permitArgs The permit arguments to be passed to the token's permit function
+     * @param merkleRoot The merkle root of the merkle tree for the drop
+     * @param totalTokens The total number of tokens to be dropped
+     * @param tokenAddress The address of the token to be dropped
+     * @param startTimestamp The timestamp at which the drop will become live
+     * @param expirationTimestamp The timestamp at which the drop will expire
+     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
+     * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @return dropId The ID of the newly created drop
+     */
     function permitAndCreateDrop(
         PermitArgs calldata permitArgs,
         bytes32 merkleRoot,
@@ -227,7 +229,9 @@ contract Dropper {
         }
     }
 
-    /// @dev Calls permit function on the token contract
+    /**
+     * @dev Calls permit function on the token contract
+     */
     function _callPermit(address tokenAddress, PermitArgs calldata permitArgs) internal {
         IERC20Permit(tokenAddress).permit(
             msg.sender, address(this), permitArgs.amount, permitArgs.deadline, permitArgs.v, permitArgs.r, permitArgs.s
