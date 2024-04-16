@@ -484,7 +484,9 @@ contract DropperTest is PRBTest, StdCheats {
             _signPermit(creator, address(token), address(dropper), totalDropAmount, block.timestamp + 1);
         Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
 
-        IERC20Permit(address(token)).permit(creator.addr, address(dropper), totalDropAmount, block.timestamp + 1, v, r, s);
+        IERC20Permit(address(token)).permit(
+            creator.addr, address(dropper), totalDropAmount, block.timestamp + 1, v, r, s
+        );
 
         vm.prank(creator.addr);
         dropper.permitAndCreateDrop(
