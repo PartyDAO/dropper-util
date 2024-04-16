@@ -233,8 +233,9 @@ contract Dropper {
      * @dev Calls permit function on the token contract
      */
     function _callPermit(address tokenAddress, PermitArgs calldata permitArgs) internal {
-        IERC20Permit(tokenAddress).permit(
+        // We do not revert if the permit fails as the permit operation is callable by anyone
+        try IERC20Permit(tokenAddress).permit(
             msg.sender, address(this), permitArgs.amount, permitArgs.deadline, permitArgs.v, permitArgs.r, permitArgs.s
-        );
+        ) { } catch { }
     }
 }
