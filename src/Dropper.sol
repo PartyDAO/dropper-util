@@ -243,6 +243,6 @@ contract Dropper {
      * change in ABI.
      */
     function VERSION() external pure returns (string memory) {
-        return "1.0";
+        return "1.0.0";
     }
 }
