@@ -16,7 +16,8 @@ contract DropperTest is PRBTest, StdCheats {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI
+        string merkleTreeURI,
+        string dropDescription
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -79,7 +80,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -90,7 +92,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         assertEq(dropId, expectedDropId);
@@ -109,7 +112,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -125,7 +129,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -141,7 +146,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -157,7 +163,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) - 1,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -246,7 +253,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -257,7 +265,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         assertEq(dropId, expectedDropId);
@@ -341,7 +350,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp + 3601),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -397,7 +407,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
@@ -411,7 +422,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -452,7 +464,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 

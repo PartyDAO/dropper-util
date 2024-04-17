@@ -17,7 +17,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI
+        string merkleTreeURI,
+        string dropDescription
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -79,6 +80,7 @@ contract Dropper {
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
      * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @param dropDescription A description of the drop emitted at creation
      * @return dropId The ID of the newly created drop
      */
     function permitAndCreateDrop(
@@ -89,7 +91,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string calldata merkleTreeURI
+        string calldata merkleTreeURI,
+        string calldata dropDescription
     )
         external
         returns (uint256)
@@ -106,7 +109,8 @@ contract Dropper {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
-            merkleTreeURI
+            merkleTreeURI,
+            dropDescription
         );
     }
 
@@ -119,6 +123,7 @@ contract Dropper {
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
      * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @param dropDescription A description of the drop emitted at creation
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
@@ -128,7 +133,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string calldata merkleTreeURI
+        string calldata merkleTreeURI,
+        string calldata dropDescription
     )
         public
         returns (uint256 dropId)
@@ -161,7 +167,8 @@ contract Dropper {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
-            merkleTreeURI
+            merkleTreeURI,
+            dropDescription
         );
     }
 
