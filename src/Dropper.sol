@@ -239,7 +239,8 @@ contract Dropper {
     }
 
     /**
-     * @dev Returns the version of the contract. Decimal versions indicate change in logic. Number change indicates change in ABI.
+     * @dev Returns the version of the contract. Decimal versions indicate change in logic. Number change indicates
+     * change in ABI.
      */
     function VERSION() external pure returns (string memory) {
         return "1.0";
