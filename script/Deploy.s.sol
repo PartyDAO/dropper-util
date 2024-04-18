@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity >=0.8.0;
+pragma solidity >=0.8.25;
 
 import { Script } from "forge-std/src/Script.sol";
 import { Test } from "forge-std/src/Test.sol";
@@ -29,11 +29,11 @@ contract DeployScript is Script, Test {
 
         if (fileExists) {
             fileContent = vm.readFile(filePath);
-            string memory keyToSearch = string(abi.encodePacked("$.Dropper[?(@.version == \"", contractVersion, "\")]"));
+            string memory keyToSearch = string(abi.encodePacked("$.Dropper[?(@.version ==\"", contractVersion, "\")]"));
             if (vm.keyExistsJson(fileContent, keyToSearch)) {
                 require(false, "Contract already deployed");
             }
-            existingDeployments = abi.decode(vm.parseJson(fileContent, "$.Dropper"), (Deployment[]));   
+            existingDeployments = abi.decode(vm.parseJson(fileContent, "$.Dropper"), (Deployment[]));
         }
 
         address newContractAddress = _deploy();
