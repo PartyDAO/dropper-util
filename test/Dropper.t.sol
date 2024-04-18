@@ -118,6 +118,23 @@ contract DropperTest is PRBTest, StdCheats {
         );
     }
 
+    function test_createDrop_revert_expirationRecipientIsZero() external {
+        deal(address(token), address(this), 1000e18);
+        token.approve(address(dropper), 1000e18);
+
+        vm.expectRevert(Dropper.ExpirationRecipientIsZero.selector);
+        dropper.createDrop(
+            bytes32(uint256(1)),
+            1000e18,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(0),
+            "someURI",
+            "My Drop"
+        );
+    }
+
     function testCreateDropTotalTokenIsZero() public {
         deal(address(token), address(this), 1000e18);
         token.approve(address(dropper), 1000e18);
@@ -348,10 +365,10 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.warp(block.timestamp + 3601);
 
-        vm.expectRevert(Dropper.DropIdInvalid.selector);
+        vm.expectRevert(Dropper.InvalidDropId.selector);
         dropper.refundToRecipient(dropId + 1);
 
-        vm.expectRevert(Dropper.DropIdInvalid.selector);
+        vm.expectRevert(Dropper.InvalidDropId.selector);
         dropper.refundToRecipient(0);
     }
 
