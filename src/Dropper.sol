@@ -73,7 +73,7 @@ contract Dropper {
     error ExpirationRecipientIsZero();
 
     mapping(uint256 => DropData) public drops;
-    mapping(uint256 => mapping(address => bool)) private _claimed;
+    mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
@@ -214,13 +214,13 @@ contract Dropper {
         DropData storage drop = drops[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
-        if (_claimed[dropId][msg.sender]) revert DropAlreadyClaimed();
+        if (hasClaimed[dropId][msg.sender]) revert DropAlreadyClaimed();
         if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf)) revert InvalidMerkleProof();
 
-        _claimed[dropId][msg.sender] = true;
+        hasClaimed[dropId][msg.sender] = true;
         drop.claimedTokens += amount;
 
         address tokenAddress = drop.tokenAddress;

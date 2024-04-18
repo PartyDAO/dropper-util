@@ -202,6 +202,7 @@ contract DropperTest is PRBTest, StdCheats {
             dropper.claim(dropId, amount, proof);
 
             assertEq(token.balanceOf(member), amount);
+            assertTrue(dropper.hasClaimed(dropId, member));
         }
 
         // All have claimed
