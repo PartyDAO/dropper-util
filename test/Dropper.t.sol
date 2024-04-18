@@ -510,7 +510,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Airdrop"
         );
     }
 
