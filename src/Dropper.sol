@@ -69,7 +69,8 @@ contract Dropper {
     error InsufficientTokensRemaining();
     error InvalidMerkleProof();
     error ArityMismatch();
-    error DropIdInvalid();
+    error InvalidDropId();
+    error ExpirationRecipientIsZero();
 
     mapping(uint256 => DropData) public drops;
     mapping(uint256 => mapping(address => bool)) private _claimed;
@@ -153,6 +154,7 @@ contract Dropper {
         if (tokenAddress == address(0)) revert TokenAddressIsZero();
         if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
         if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
+        if (expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
 
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalTokens);
 
@@ -186,7 +188,7 @@ contract Dropper {
      * @param dropId The drop ID of the drop to refund
      */
     function refundToRecipient(uint256 dropId) external {
-        if (dropId > numDrops || dropId == 0) revert DropIdInvalid();
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
         DropData storage drop = drops[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
         if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
@@ -208,7 +210,7 @@ contract Dropper {
      * @param merkleProof The merkle inclusion proof
      */
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
-        if (dropId > numDrops || dropId == 0) revert DropIdInvalid();
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
         DropData storage drop = drops[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
