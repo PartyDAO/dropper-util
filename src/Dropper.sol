@@ -6,6 +6,12 @@ import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/**
+ * @title Dropper
+ * @author PartyDAO
+ * @notice Dropper contract for creating merkle tree based airdrops. Note: this contract is compatible only with ERC20
+ * compliant tokens (no fee on transfer or rebasing tokens).
+ */
 contract Dropper {
     using SafeERC20 for IERC20;
 
@@ -75,7 +81,8 @@ contract Dropper {
      * @param permitArgs The permit arguments to be passed to the token's permit function
      * @param merkleRoot The merkle root of the merkle tree for the drop
      * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the token to be dropped
+     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
+     * rebasing
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
@@ -118,7 +125,8 @@ contract Dropper {
      * @notice Create a new drop with the given parameters
      * @param merkleRoot The merkle root of the merkle tree for the drop
      * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the token to be dropped
+     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
+     * rebasing
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
