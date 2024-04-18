@@ -69,6 +69,7 @@ contract Dropper {
     error InsufficientTokensRemaining();
     error InvalidMerkleProof();
     error ArityMismatch();
+    error DropIdInvalid();
 
     mapping(uint256 => DropData) public drops;
     mapping(uint256 => mapping(address => bool)) private _claimed;
@@ -185,6 +186,7 @@ contract Dropper {
      * @param dropId The drop ID of the drop to refund
      */
     function refundToRecipient(uint256 dropId) external {
+        if (dropId > numDrops || dropId == 0) revert DropIdInvalid();
         DropData storage drop = drops[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
         if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
@@ -206,6 +208,7 @@ contract Dropper {
      * @param merkleProof The merkle inclusion proof
      */
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
+        if (dropId > numDrops || dropId == 0) revert DropIdInvalid();
         DropData storage drop = drops[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
