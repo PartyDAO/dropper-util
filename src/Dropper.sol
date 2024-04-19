@@ -6,6 +6,12 @@ import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/**
+ * @title Dropper
+ * @author PartyDAO
+ * @notice Dropper contract for creating merkle tree based airdrops. Note: this contract is compatible only with ERC20
+ * compliant tokens (no fee on transfer or rebasing tokens).
+ */
 contract Dropper {
     using SafeERC20 for IERC20;
 
@@ -17,7 +23,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI
+        string merkleTreeURI,
+        string dropDescription
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -62,9 +69,11 @@ contract Dropper {
     error InsufficientTokensRemaining();
     error InvalidMerkleProof();
     error ArityMismatch();
+    error InvalidDropId();
+    error ExpirationRecipientIsZero();
 
-    mapping(uint256 => DropData) private _drops;
-    mapping(uint256 => mapping(address => bool)) private _claimed;
+    mapping(uint256 => DropData) public drops;
+    mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
@@ -74,11 +83,13 @@ contract Dropper {
      * @param permitArgs The permit arguments to be passed to the token's permit function
      * @param merkleRoot The merkle root of the merkle tree for the drop
      * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the token to be dropped
+     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
+     * rebasing
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
      * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @param dropDescription A description of the drop emitted at creation
      * @return dropId The ID of the newly created drop
      */
     function permitAndCreateDrop(
@@ -89,7 +100,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string calldata merkleTreeURI
+        string calldata merkleTreeURI,
+        string calldata dropDescription
     )
         external
         returns (uint256)
@@ -106,7 +118,8 @@ contract Dropper {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
-            merkleTreeURI
+            merkleTreeURI,
+            dropDescription
         );
     }
 
@@ -114,11 +127,13 @@ contract Dropper {
      * @notice Create a new drop with the given parameters
      * @param merkleRoot The merkle root of the merkle tree for the drop
      * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the token to be dropped
+     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
+     * rebasing
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
      * @param merkleTreeURI The URI of the full merkle tree for the drop
+     * @param dropDescription A description of the drop emitted at creation
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
@@ -128,7 +143,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string calldata merkleTreeURI
+        string calldata merkleTreeURI,
+        string calldata dropDescription
     )
         public
         returns (uint256 dropId)
@@ -138,12 +154,13 @@ contract Dropper {
         if (tokenAddress == address(0)) revert TokenAddressIsZero();
         if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
         if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
+        if (expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
 
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalTokens);
 
         dropId = ++numDrops;
 
-        _drops[dropId] = DropData({
+        drops[dropId] = DropData({
             merkleRoot: merkleRoot,
             totalTokens: totalTokens,
             claimedTokens: 0,
@@ -161,7 +178,8 @@ contract Dropper {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
-            merkleTreeURI
+            merkleTreeURI,
+            dropDescription
         );
     }
 
@@ -170,7 +188,8 @@ contract Dropper {
      * @param dropId The drop ID of the drop to refund
      */
     function refundToRecipient(uint256 dropId) external {
-        DropData storage drop = _drops[dropId];
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
+        DropData storage drop = drops[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
         if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
 
@@ -191,16 +210,17 @@ contract Dropper {
      * @param merkleProof The merkle inclusion proof
      */
     function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
-        DropData storage drop = _drops[dropId];
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
+        DropData storage drop = drops[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
-        if (_claimed[dropId][msg.sender]) revert DropAlreadyClaimed();
+        if (hasClaimed[dropId][msg.sender]) revert DropAlreadyClaimed();
         if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf)) revert InvalidMerkleProof();
 
-        _claimed[dropId][msg.sender] = true;
+        hasClaimed[dropId][msg.sender] = true;
         drop.claimedTokens += amount;
 
         address tokenAddress = drop.tokenAddress;
@@ -233,8 +253,17 @@ contract Dropper {
      * @dev Calls permit function on the token contract
      */
     function _callPermit(address tokenAddress, PermitArgs calldata permitArgs) internal {
-        IERC20Permit(tokenAddress).permit(
+        // We do not revert if the permit fails as the permit operation is callable by anyone
+        try IERC20Permit(tokenAddress).permit(
             msg.sender, address(this), permitArgs.amount, permitArgs.deadline, permitArgs.v, permitArgs.r, permitArgs.s
-        );
+        ) { } catch { }
+    }
+
+    /**
+     * @dev Returns the version of the contract. Decimal versions indicate change in logic. Number change indicates
+     * change in ABI.
+     */
+    function VERSION() external pure returns (string memory) {
+        return "1.0.0";
     }
 }

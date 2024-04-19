@@ -6,6 +6,7 @@ import { StdCheats } from "forge-std/src/StdCheats.sol";
 import { Dropper } from "../src/Dropper.sol";
 import { MockERC20 } from "forge-std/src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
+import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract DropperTest is PRBTest, StdCheats {
     event DropCreated(
@@ -16,7 +17,8 @@ contract DropperTest is PRBTest, StdCheats {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI
+        string merkleTreeURI,
+        string dropDescription
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -79,7 +81,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -90,7 +93,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         assertEq(dropId, expectedDropId);
@@ -109,7 +113,25 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
+        );
+    }
+
+    function test_createDrop_revert_expirationRecipientIsZero() external {
+        deal(address(token), address(this), 1000e18);
+        token.approve(address(dropper), 1000e18);
+
+        vm.expectRevert(Dropper.ExpirationRecipientIsZero.selector);
+        dropper.createDrop(
+            bytes32(uint256(1)),
+            1000e18,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp + 3600),
+            address(0),
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -125,7 +147,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -141,7 +164,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -157,7 +181,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) - 1,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -177,6 +202,7 @@ contract DropperTest is PRBTest, StdCheats {
             dropper.claim(dropId, amount, proof);
 
             assertEq(token.balanceOf(member), amount);
+            assertTrue(dropper.hasClaimed(dropId, member));
         }
 
         // All have claimed
@@ -246,7 +272,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -257,7 +284,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         assertEq(dropId, expectedDropId);
@@ -332,6 +360,19 @@ contract DropperTest is PRBTest, StdCheats {
         assertEq(token.balanceOf(address(this)), tokensToRefund);
     }
 
+    function test_refundToRecipient_reverts_dropIdInvalid() public {
+        (uint256 dropId,) =
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
+
+        vm.warp(block.timestamp + 3601);
+
+        vm.expectRevert(Dropper.InvalidDropId.selector);
+        dropper.refundToRecipient(dropId + 1);
+
+        vm.expectRevert(Dropper.InvalidDropId.selector);
+        dropper.refundToRecipient(0);
+    }
+
     function test_createDrop_fail_endBeforeStart() external {
         vm.expectRevert(Dropper.EndBeforeStart.selector);
         dropper.createDrop(
@@ -341,7 +382,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp + 3601),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -362,7 +404,7 @@ contract DropperTest is PRBTest, StdCheats {
         dropper.refundToRecipient(1);
     }
 
-    function test_permitAndCreateDrop_works(uint256 creatorPk) external {
+    function test_permitAndCreateDrop_permitWorks(uint256 creatorPk) external {
         vm.assume(creatorPk != 0);
         vm.assume(
             creatorPk
@@ -397,7 +439,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
 
         Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
@@ -411,7 +454,8 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
         );
     }
 
@@ -452,7 +496,53 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI"
+            "someURI",
+            "My Drop"
+        );
+    }
+
+    function test_permitAndCreateDrop_permitRevertsTxSuccess(uint256 creatorPk) external {
+        vm.assume(creatorPk != 0);
+        vm.assume(
+            creatorPk
+                < 95_792_089_237_316_195_423_570_985_008_687_907_852_837_564_279_074_904_382_605_163_141_518_161_494_337
+        );
+        Vm.Wallet memory creator = vm.createWallet(creatorPk, "Creator");
+
+        address[4] memory recipients = [address(1), address(2), address(3), address(4)];
+        uint40[4] memory amounts = [uint40(100), 1000, 1000, 1000];
+
+        bytes32[] memory merkleLeaves = new bytes32[](4);
+
+        uint256 totalDropAmount;
+        for (uint256 i = 0; i < 4; i++) {
+            merkleLeaves[i] = _hashLeaf(recipients[i], amounts[i]);
+            totalDropAmount += amounts[i];
+        }
+
+        bytes32 merkleRoot = merkle.getRoot(merkleLeaves);
+
+        deal(address(token), creator.addr, totalDropAmount);
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            _signPermit(creator, address(token), address(dropper), totalDropAmount, block.timestamp + 1);
+        Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
+
+        IERC20Permit(address(token)).permit(
+            creator.addr, address(dropper), totalDropAmount, block.timestamp + 1, v, r, s
+        );
+
+        vm.prank(creator.addr);
+        dropper.permitAndCreateDrop(
+            permitArgs,
+            merkleRoot,
+            totalDropAmount,
+            address(token),
+            uint40(block.timestamp),
+            uint40(block.timestamp) + 3600,
+            address(this),
+            "someURI",
+            "My Airdrop"
         );
     }
 
