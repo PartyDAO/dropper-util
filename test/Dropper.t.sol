@@ -6,7 +6,7 @@ import { StdCheats } from "forge-std/src/StdCheats.sol";
 import { Dropper } from "../src/Dropper.sol";
 import { MockERC20 } from "forge-std/src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
-import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract DropperTest is PRBTest, StdCheats {
     event DropCreated(
