@@ -264,8 +264,8 @@ contract Dropper is Ownable {
 
             uint256 ownerShare = fee * drop.ownerShareBps / 10_000;
 
-            drop.feeRecipient.call{ value: fee - ownerShare, gas: 100_000 }("");
             owner().call{ value: ownerShare, gas: 100_000 }("");
+            drop.feeRecipient.call{ value: fee - ownerShare, gas: 100_000 }("");
         }
 
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
