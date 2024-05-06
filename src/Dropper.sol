@@ -24,8 +24,7 @@ contract Dropper is Ownable {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI,
-        string dropDescription
+        MerkleMetadata merkleMetadata
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -61,6 +60,11 @@ contract Dropper is Ownable {
         uint8 v;
         bytes32 r;
         bytes32 s;
+    }
+
+    struct MerkleMetadata {
+        string merkleTreeURI;
+        string dropDescription;
     }
 
     error InsufficientPermitAmount();
@@ -109,8 +113,7 @@ contract Dropper is Ownable {
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param merkleTreeURI The URI of the full merkle tree for the drop
-     * @param dropDescription A description of the drop emitted at creation
+     * @param merkleMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function permitAndCreateDrop(
@@ -123,8 +126,7 @@ contract Dropper is Ownable {
         address expirationRecipient,
         address feeRecipient,
         bool claimFeeEnabled,
-        string calldata merkleTreeURI,
-        string calldata dropDescription
+        MerkleMetadata calldata merkleMetadata
     )
         external
         returns (uint256)
@@ -143,8 +145,7 @@ contract Dropper is Ownable {
             expirationRecipient,
             feeRecipient,
             claimFeeEnabled,
-            merkleTreeURI,
-            dropDescription
+            merkleMetadata
         );
     }
 
@@ -157,8 +158,7 @@ contract Dropper is Ownable {
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param merkleTreeURI The URI of the full merkle tree for the drop
-     * @param dropDescription A description of the drop emitted at creation
+     * @param merkleMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
@@ -170,8 +170,7 @@ contract Dropper is Ownable {
         address expirationRecipient,
         address feeRecipient,
         bool claimFeeEnabled,
-        string calldata merkleTreeURI,
-        string calldata dropDescription
+        MerkleMetadata calldata merkleMetadata
     )
         public
         returns (uint256 dropId)
@@ -208,8 +207,7 @@ contract Dropper is Ownable {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
-            merkleTreeURI,
-            dropDescription
+            merkleMetadata
         );
     }
 
@@ -306,6 +304,6 @@ contract Dropper is Ownable {
      * change in ABI.
      */
     function VERSION() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.1.0";
     }
 }
