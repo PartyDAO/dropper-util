@@ -5,6 +5,7 @@ import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol"
 import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import { MerkleProof } from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { SafeERC20 } from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
  * @title Dropper
@@ -12,7 +13,7 @@ import { SafeERC20 } from "openzeppelin-contracts/contracts/token/ERC20/utils/Sa
  * @notice Dropper contract for creating merkle tree based airdrops. Note: this contract is compatible only with ERC20
  * compliant tokens (no fee on transfer or rebasing tokens).
  */
-contract Dropper {
+contract Dropper is Ownable {
     using SafeERC20 for IERC20;
 
     event DropCreated(
@@ -44,8 +45,14 @@ contract Dropper {
         uint40 startTimestamp;
         // Timestamp at which the drop will expire
         uint40 expirationTimestamp;
+        // The owner share in basis points for each claim fee
+        uint16 ownerShareBps;
+        // The fee to claim a drop in ETH
+        uint256 claimFee;
         // Address to which the remaining tokens will be refunded after expiration
         address expirationRecipient;
+        // Fees from drop claims will be sent here
+        address feeRecipient;
     }
 
     struct PermitArgs {
@@ -71,12 +78,26 @@ contract Dropper {
     error ArityMismatch();
     error InvalidDropId();
     error ExpirationRecipientIsZero();
+    error InvalidBps();
+    error InvalidMsgValue();
 
     mapping(uint256 => DropData) public drops;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
+
+    /// @notice The fee to claim a drop in ETH. This is cached per drop.
+    uint256 private currentClaimFee;
+
+    /// @notice The owner share in basis points (1/10000) for claim fee. This is cached per drop.
+    uint16 private currentOwnerShareBps;
+
+    constructor(address owner, uint256 initialClaimFee, uint16 initialOwnerShareBps) Ownable(owner) {
+        if (initialOwnerShareBps > 10_000) revert InvalidBps();
+        currentClaimFee = initialClaimFee;
+        currentOwnerShareBps = initialOwnerShareBps;
+    }
 
     /**
      * @notice Permits the token and creates a new drop with the given parameters
@@ -100,6 +121,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
+        address feeRecipient,
+        bool claimFeeEnabled,
         string calldata merkleTreeURI,
         string calldata dropDescription
     )
@@ -118,6 +141,8 @@ contract Dropper {
             startTimestamp,
             expirationTimestamp,
             expirationRecipient,
+            feeRecipient,
+            claimFeeEnabled,
             merkleTreeURI,
             dropDescription
         );
@@ -143,6 +168,8 @@ contract Dropper {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
+        address feeRecipient,
+        bool claimFeeEnabled,
         string calldata merkleTreeURI,
         string calldata dropDescription
     )
@@ -167,7 +194,10 @@ contract Dropper {
             tokenAddress: tokenAddress,
             startTimestamp: startTimestamp,
             expirationTimestamp: expirationTimestamp,
-            expirationRecipient: expirationRecipient
+            ownerShareBps: claimFeeEnabled ? currentOwnerShareBps : 0,
+            claimFee: claimFeeEnabled ? currentClaimFee : 0,
+            expirationRecipient: expirationRecipient,
+            feeRecipient: feeRecipient
         });
 
         emit DropCreated(
@@ -209,7 +239,7 @@ contract Dropper {
      * @param amount The amount of tokens to claim
      * @param merkleProof The merkle inclusion proof
      */
-    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
+    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public payable {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
         DropData storage drop = drops[dropId];
 
@@ -225,6 +255,18 @@ contract Dropper {
 
         address tokenAddress = drop.tokenAddress;
         IERC20(tokenAddress).safeTransfer(msg.sender, amount);
+
+        // Distribute fee
+        uint256 fee = drop.claimFee;
+
+        if (fee > 0) {
+            if (address(this).balance < fee) revert InvalidMsgValue();
+
+            uint256 ownerShare = fee * drop.ownerShareBps / 10_000;
+
+            drop.feeRecipient.call{ value: fee - ownerShare, gas: 100_000 }("");
+            owner().call{ value: ownerShare, gas: 100_000 }("");
+        }
 
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
     }
