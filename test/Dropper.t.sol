@@ -3,7 +3,7 @@ pragma solidity >=0.8.25 <0.9.0;
 
 import { PRBTest, Vm } from "@prb/test/src/PRBTest.sol";
 import { StdCheats } from "forge-std/src/StdCheats.sol";
-import { Dropper, Ownable } from "../src/Dropper.sol";
+import { Dropper } from "../src/Dropper.sol";
 import { MockERC20 } from "forge-std/src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
 import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
