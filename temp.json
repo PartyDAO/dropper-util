@@ -1,0 +1,183 @@
+[
+  {
+    "type": "function",
+    "name": "VERSION",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "batchClaim",
+    "inputs": [
+      { "name": "dropIds", "type": "uint256[]", "internalType": "uint256[]" },
+      { "name": "amounts", "type": "uint256[]", "internalType": "uint256[]" },
+      { "name": "merkleProofs", "type": "bytes32[][]", "internalType": "bytes32[][]" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claim",
+    "inputs": [
+      { "name": "dropId", "type": "uint256", "internalType": "uint256" },
+      { "name": "amount", "type": "uint256", "internalType": "uint256" },
+      { "name": "merkleProof", "type": "bytes32[]", "internalType": "bytes32[]" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createDrop",
+    "inputs": [
+      { "name": "merkleRoot", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "totalTokens", "type": "uint256", "internalType": "uint256" },
+      { "name": "tokenAddress", "type": "address", "internalType": "address" },
+      { "name": "startTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationRecipient", "type": "address", "internalType": "address" },
+      { "name": "merkleTreeURI", "type": "string", "internalType": "string" },
+      { "name": "dropDescription", "type": "string", "internalType": "string" }
+    ],
+    "outputs": [{ "name": "dropId", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "drops",
+    "inputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "outputs": [
+      { "name": "merkleRoot", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "totalTokens", "type": "uint256", "internalType": "uint256" },
+      { "name": "claimedTokens", "type": "uint256", "internalType": "uint256" },
+      { "name": "tokenAddress", "type": "address", "internalType": "address" },
+      { "name": "startTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationRecipient", "type": "address", "internalType": "address" }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasClaimed",
+    "inputs": [
+      { "name": "", "type": "uint256", "internalType": "uint256" },
+      { "name": "", "type": "address", "internalType": "address" }
+    ],
+    "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "numDrops",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "permitAndCreateDrop",
+    "inputs": [
+      {
+        "name": "permitArgs",
+        "type": "tuple",
+        "internalType": "struct Dropper.PermitArgs",
+        "components": [
+          { "name": "amount", "type": "uint256", "internalType": "uint256" },
+          { "name": "deadline", "type": "uint256", "internalType": "uint256" },
+          { "name": "v", "type": "uint8", "internalType": "uint8" },
+          { "name": "r", "type": "bytes32", "internalType": "bytes32" },
+          { "name": "s", "type": "bytes32", "internalType": "bytes32" }
+        ]
+      },
+      { "name": "merkleRoot", "type": "bytes32", "internalType": "bytes32" },
+      { "name": "totalTokens", "type": "uint256", "internalType": "uint256" },
+      { "name": "tokenAddress", "type": "address", "internalType": "address" },
+      { "name": "startTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationTimestamp", "type": "uint40", "internalType": "uint40" },
+      { "name": "expirationRecipient", "type": "address", "internalType": "address" },
+      { "name": "merkleTreeURI", "type": "string", "internalType": "string" },
+      { "name": "dropDescription", "type": "string", "internalType": "string" }
+    ],
+    "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "refundToRecipient",
+    "inputs": [{ "name": "dropId", "type": "uint256", "internalType": "uint256" }],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "DropClaimed",
+    "inputs": [
+      { "name": "dropId", "type": "uint256", "indexed": true, "internalType": "uint256" },
+      { "name": "recipient", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "tokenAddress", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DropCreated",
+    "inputs": [
+      { "name": "dropId", "type": "uint256", "indexed": true, "internalType": "uint256" },
+      { "name": "merkleRoot", "type": "bytes32", "indexed": false, "internalType": "bytes32" },
+      { "name": "totalTokens", "type": "uint256", "indexed": false, "internalType": "uint256" },
+      { "name": "tokenAddress", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "startTimestamp", "type": "uint40", "indexed": false, "internalType": "uint40" },
+      { "name": "expirationTimestamp", "type": "uint40", "indexed": false, "internalType": "uint40" },
+      { "name": "expirationRecipient", "type": "address", "indexed": false, "internalType": "address" },
+      { "name": "merkleTreeURI", "type": "string", "indexed": false, "internalType": "string" },
+      { "name": "dropDescription", "type": "string", "indexed": false, "internalType": "string" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DropRefunded",
+    "inputs": [
+      { "name": "dropId", "type": "uint256", "indexed": true, "internalType": "uint256" },
+      { "name": "recipient", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "tokenAddress", "type": "address", "indexed": true, "internalType": "address" },
+      { "name": "amount", "type": "uint256", "indexed": false, "internalType": "uint256" }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AddressEmptyCode",
+    "inputs": [{ "name": "target", "type": "address", "internalType": "address" }]
+  },
+  {
+    "type": "error",
+    "name": "AddressInsufficientBalance",
+    "inputs": [{ "name": "account", "type": "address", "internalType": "address" }]
+  },
+  { "type": "error", "name": "AllTokensClaimed", "inputs": [] },
+  { "type": "error", "name": "ArityMismatch", "inputs": [] },
+  { "type": "error", "name": "DropAlreadyClaimed", "inputs": [] },
+  { "type": "error", "name": "DropNotLive", "inputs": [] },
+  { "type": "error", "name": "DropStillLive", "inputs": [] },
+  { "type": "error", "name": "EndBeforeStart", "inputs": [] },
+  { "type": "error", "name": "ExpirationRecipientIsZero", "inputs": [] },
+  { "type": "error", "name": "ExpirationTimestampInPast", "inputs": [] },
+  { "type": "error", "name": "FailedInnerCall", "inputs": [] },
+  { "type": "error", "name": "InsufficientPermitAmount", "inputs": [] },
+  { "type": "error", "name": "InsufficientTokensRemaining", "inputs": [] },
+  { "type": "error", "name": "InvalidDropId", "inputs": [] },
+  { "type": "error", "name": "InvalidMerkleProof", "inputs": [] },
+  { "type": "error", "name": "MerkleRootNotSet", "inputs": [] },
+  {
+    "type": "error",
+    "name": "SafeERC20FailedOperation",
+    "inputs": [{ "name": "token", "type": "address", "internalType": "address" }]
+  },
+  { "type": "error", "name": "TokenAddressIsZero", "inputs": [] },
+  { "type": "error", "name": "TotalTokenIsZero", "inputs": [] }
+]
