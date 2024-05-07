@@ -31,6 +31,10 @@ contract Dropper is Ownable {
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
+    event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
+
+    event OwnerShareBpsSet(uint16 oldOwnerShareBps, uint16 ownerShareBps);
+
     struct DropData {
         // Merkle root for the token drop
         bytes32 merkleRoot;
@@ -237,7 +241,7 @@ contract Dropper is Ownable {
      * @param amount The amount of tokens to claim
      * @param merkleProof The merkle inclusion proof
      */
-    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public payable {
+    function _claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) internal {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
         DropData storage drop = drops[dropId];
 
@@ -269,6 +273,15 @@ contract Dropper is Ownable {
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
     }
 
+    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) external payable {
+        _claim(dropId, amount, merkleProof);
+
+        uint256 remainingBalance = address(this).balance;
+        if (remainingBalance > 0) {
+            msg.sender.call{ value: remainingBalance, gas: 100_000 }("");
+        }
+    }
+
     /**
      * @notice Claim multiple drops for `msg.sender`
      * @param dropIds The drop IDs to claim
@@ -281,11 +294,17 @@ contract Dropper is Ownable {
         bytes32[][] calldata merkleProofs
     )
         external
+        payable
     {
         if (dropIds.length != amounts.length || dropIds.length != merkleProofs.length) revert ArityMismatch();
 
         for (uint256 i = 0; i < dropIds.length; i++) {
-            claim(dropIds[i], amounts[i], merkleProofs[i]);
+            _claim(dropIds[i], amounts[i], merkleProofs[i]);
+        }
+
+        uint256 remainingBalance = address(this).balance;
+        if (remainingBalance > 0) {
+            msg.sender.call{ value: remainingBalance }("");
         }
     }
 
@@ -304,6 +323,26 @@ contract Dropper is Ownable {
      * change in ABI.
      */
     function VERSION() external pure returns (string memory) {
-        return "1.1.0";
+        return "2.0.0";
+    }
+
+    /**
+     * @notice Set the claim fee for future drops
+     * @param newClaimFee The fee to claim a drop in ETH
+     */
+    function setClaimFee(uint256 newClaimFee) external onlyOwner {
+        emit ClaimFeeSet(currentClaimFee, newClaimFee);
+        currentClaimFee = newClaimFee;
+    }
+
+    /**
+     * @notice Set the owner share in basis points for claim fee for future drops
+     * @param newOwnerShareBps The owner share in basis points (1/10000)
+     */
+    function setOwnerShareBps(uint16 newOwnerShareBps) external onlyOwner {
+        if (newOwnerShareBps > 10_000) revert InvalidBps();
+
+        emit OwnerShareBpsSet(currentOwnerShareBps, newOwnerShareBps);
+        currentOwnerShareBps = newOwnerShareBps;
     }
 }
