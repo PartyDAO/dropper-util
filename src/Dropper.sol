@@ -89,17 +89,17 @@ contract Dropper is Ownable {
     error InvalidBps();
     error InvalidMsgValue();
 
-    mapping(uint256 => DropData) public drops;
+    mapping(uint256 => DropData) private drops;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
 
     /// @notice The fee to claim a drop in ETH. This is cached per drop.
-    uint256 private currentClaimFee;
+    uint256 public currentClaimFee;
 
     /// @notice The owner share in basis points (1/10000) for claim fee. This is cached per drop.
-    uint16 private currentOwnerShareBps;
+    uint16 public currentOwnerShareBps;
 
     constructor(address owner, uint256 initialClaimFee, uint16 initialOwnerShareBps) Ownable(owner) {
         if (initialOwnerShareBps > 10_000) revert InvalidBps();
@@ -117,6 +117,7 @@ contract Dropper is Ownable {
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
+     * @param claimFeeEnabled Whether a claim fee is enabled for this drop
      * @param merkleMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
@@ -162,6 +163,7 @@ contract Dropper is Ownable {
      * @param startTimestamp The timestamp at which the drop will become live
      * @param expirationTimestamp The timestamp at which the drop will expire
      * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
+     * @param claimFeeEnabled Whether a claim fee is enabled for this drop
      * @param merkleMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
@@ -213,6 +215,14 @@ contract Dropper is Ownable {
             expirationRecipient,
             merkleMetadata
         );
+    }
+
+    /**
+     * @notice Get the drop data for a given drop ID
+     */
+    function getDrop(uint256 dropId) external view returns (DropData memory) {
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
+        return drops[dropId];
     }
 
     /**
@@ -304,7 +314,7 @@ contract Dropper is Ownable {
 
         uint256 remainingBalance = address(this).balance;
         if (remainingBalance > 0) {
-            msg.sender.call{ value: remainingBalance }("");
+            msg.sender.call{ value: remainingBalance, gas: 100_000 }("");
         }
     }
 

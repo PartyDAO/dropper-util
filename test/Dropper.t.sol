@@ -3,7 +3,7 @@ pragma solidity >=0.8.25 <0.9.0;
 
 import { PRBTest, Vm } from "@prb/test/src/PRBTest.sol";
 import { StdCheats } from "forge-std/src/StdCheats.sol";
-import { Dropper } from "../src/Dropper.sol";
+import { Dropper, Ownable } from "../src/Dropper.sol";
 import { MockERC20 } from "forge-std/src/mocks/MockERC20.sol";
 import { Merkle } from "murky/src/Merkle.sol";
 import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
@@ -24,12 +24,16 @@ contract DropperTest is PRBTest, StdCheats {
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
+    event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
+
+    event OwnerShareBpsSet(uint16 oldOwnerShareBps, uint16 ownerShareBps);
+
     Dropper public dropper;
     MockERC20 public token;
     Merkle public merkle;
 
     function setUp() public {
-        dropper = new Dropper(address(this), 0.01 ether, 0.5e4);
+        dropper = new Dropper(address(0xdead), 0.01 ether, 0.5e4);
         token = new MockERC20();
         token.initialize("Mock Token", "MTK", 18);
         merkle = new Merkle();
@@ -41,12 +45,15 @@ contract DropperTest is PRBTest, StdCheats {
 
     function testCreateDrop(
         address[4] memory recipients,
-        uint40[4] memory amounts
+        uint40[4] memory amounts,
+        bool claimFeeEnabled
     )
         public
         returns (uint256 dropId, bytes32[] memory merkleLeaves)
     {
         for (uint256 i = 0; i < recipients.length; i++) {
+            vm.assume(recipients[i] != address(0xdead));
+            vm.assume(recipients[i] != address(this));
             for (uint256 j = i; j < recipients.length; j++) {
                 if (i != j) {
                     vm.assume(recipients[i] != recipients[j]);
@@ -92,7 +99,7 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp + 3600),
             address(this),
             address(this),
-            false,
+            claimFeeEnabled,
             Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
@@ -191,7 +198,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaim(address[4] memory recipients, uint40[4] memory amounts) public {
-        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, false);
 
         for (uint256 i = 0; i < 4; i++) {
             address member = recipients[i];
@@ -213,8 +220,59 @@ contract DropperTest is PRBTest, StdCheats {
         assertEq(token.balanceOf(address(dropper)), 0);
     }
 
+    function test_claim_withClaimFee(address[4] memory recipients, uint40[4] memory amounts) public {
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, true);
+
+        Dropper.DropData memory drop = dropper.getDrop(dropId);
+
+        assertEq(drop.claimFee, dropper.currentClaimFee());
+        assertEq(drop.ownerShareBps, dropper.currentOwnerShareBps());
+
+        for (uint256 i = 0; i < 4; i++) {
+            address member = recipients[i];
+            uint256 amount = amounts[i];
+
+            vm.deal(member, drop.claimFee);
+
+            bytes32[] memory proof = merkle.getProof(merkleLeaves, i);
+
+            vm.expectEmit(true, true, true, true);
+            emit DropClaimed(dropId, member, address(token), amount);
+
+            uint256 ownerBalanceBefore = address(0xdead).balance;
+            uint256 feeRecipientBalanceBefore = address(this).balance;
+
+            vm.prank(member);
+            dropper.claim{ value: drop.claimFee }(dropId, amount, proof);
+
+            assertEq(address(0xdead).balance, ownerBalanceBefore + drop.claimFee * drop.ownerShareBps / 10_000);
+            assertEq(
+                address(this).balance,
+                feeRecipientBalanceBefore + drop.claimFee - drop.claimFee * drop.ownerShareBps / 10_000
+            );
+
+            assertEq(token.balanceOf(member), amount);
+            assertTrue(dropper.hasClaimed(dropId, member));
+        }
+    }
+
+    function test_claim_revert_claimFeeNotEnough(address[4] memory recipients, uint40[4] memory amounts) public {
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, true);
+
+        Dropper.DropData memory drop = dropper.getDrop(dropId);
+
+        bytes32[] memory proof = merkle.getProof(merkleLeaves, 0);
+
+        address member = recipients[0];
+        vm.deal(member, drop.claimFee);
+
+        vm.expectRevert(Dropper.InvalidMsgValue.selector);
+        vm.prank(member);
+        dropper.claim{ value: drop.claimFee - 1 }(dropId, amounts[0], proof);
+    }
+
     function testClaimDropExpired(address[4] memory recipients, uint40[4] memory amounts) public {
-        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, false);
 
         uint256 amount = amounts[0];
 
@@ -228,7 +286,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimDropAlreadyClaimed(address[4] memory recipients, uint40[4] memory amounts) public {
-        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, false);
 
         address member = recipients[0];
         uint256 amount = amounts[0];
@@ -302,7 +360,7 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testClaimInvalidMerkleProof(address[4] memory recipients, uint40[4] memory amounts) public {
-        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
+        (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, false);
 
         uint256 amount = amounts[0];
         bytes32[] memory invalidProof = merkle.getProof(merkleLeaves, 0);
@@ -314,8 +372,8 @@ contract DropperTest is PRBTest, StdCheats {
     }
 
     function testBatchClaim(address[4] memory recipients, uint40[4] memory amounts) public {
-        (uint256 dropId1, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
-        (uint256 dropId2,) = testCreateDrop(recipients, amounts);
+        (uint256 dropId1, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts, false);
+        (uint256 dropId2,) = testCreateDrop(recipients, amounts, false);
 
         address member = recipients[0];
 
@@ -349,7 +407,7 @@ contract DropperTest is PRBTest, StdCheats {
 
     function testRefundToRecipient() public {
         (uint256 dropId,) =
-            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000], false);
 
         vm.warp(block.timestamp + 3601);
 
@@ -366,7 +424,7 @@ contract DropperTest is PRBTest, StdCheats {
 
     function test_refundToRecipient_reverts_dropIdInvalid() public {
         (uint256 dropId,) =
-            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000], false);
 
         vm.warp(block.timestamp + 3601);
 
@@ -394,7 +452,7 @@ contract DropperTest is PRBTest, StdCheats {
 
     function testRefundToRecipientDropStillLive() public {
         (uint256 dropId,) =
-            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000]);
+            testCreateDrop([address(1), address(2), address(3), address(4)], [uint40(100), 1000, 1000, 1000], false);
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.DropStillLive.selector));
         dropper.refundToRecipient(dropId);
@@ -553,6 +611,42 @@ contract DropperTest is PRBTest, StdCheats {
         );
     }
 
+    function test_setClaimFee_reverts_notOwner() external {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        dropper.setClaimFee(1 ether);
+    }
+
+    function test_setClaimFee_success() external {
+        vm.expectEmit(true, true, true, true);
+        emit ClaimFeeSet(0.01 ether, 1 ether);
+
+        vm.prank(address(0xdead));
+        dropper.setClaimFee(1 ether);
+
+        assertEq(dropper.currentClaimFee(), 1 ether);
+    }
+
+    function test_setOwnerShareBps_reverts_notOwner() external {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        dropper.setOwnerShareBps(1);
+    }
+
+    function test_setOwnerShareBps_reverts_invalidBps() external {
+        vm.expectRevert(abi.encodeWithSelector(Dropper.InvalidBps.selector));
+        vm.prank(address(0xdead));
+        dropper.setOwnerShareBps(1e4 + 1);
+    }
+
+    function test_setOwnerShareBps_success() external {
+        vm.expectEmit(true, true, true, true);
+        emit OwnerShareBpsSet(0.5e4, 1e4);
+
+        vm.prank(address(0xdead));
+        dropper.setOwnerShareBps(1e4);
+
+        assertEq(dropper.currentOwnerShareBps(), 1e4);
+    }
+
     function _signPermit(
         Vm.Wallet memory wallet,
         address permitToken,
@@ -573,4 +667,6 @@ contract DropperTest is PRBTest, StdCheats {
 
         return vm.sign(wallet, digest);
     }
+
+    receive() external payable { }
 }
