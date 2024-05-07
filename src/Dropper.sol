@@ -120,7 +120,7 @@ contract Dropper is Ownable {
      */
     function permitAndCreateDrop(
         PermitArgs calldata permitArgs,
-        DropStaticData memory dropStaticData,
+        DropStaticData calldata dropStaticData,
         uint256 claimFee,
         FeeRecipient[] calldata feeRecipients,
         DropMetadata calldata dropMetadata
@@ -145,7 +145,7 @@ contract Dropper is Ownable {
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
-        DropStaticData memory dropStaticData,
+        DropStaticData calldata dropStaticData,
         uint256 claimFee,
         FeeRecipient[] calldata feeRecipients,
         DropMetadata calldata dropMetadata
