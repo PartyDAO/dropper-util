@@ -5,7 +5,6 @@ import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol"
 import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import { MerkleProof } from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { SafeERC20 } from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
  * @title Dropper
@@ -13,7 +12,7 @@ import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
  * @notice Dropper contract for creating merkle tree based airdrops. Note: this contract is compatible only with ERC20
  * compliant tokens (no fee on transfer or rebasing tokens).
  */
-contract Dropper is Ownable {
+contract Dropper {
     using SafeERC20 for IERC20;
 
     event DropCreated(
@@ -29,8 +28,6 @@ contract Dropper is Ownable {
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
-
-    event OwnerShareBpsSet(uint16 oldOwnerShareBps, uint16 ownerShareBps);
 
     struct DropStaticData {
         // Merkle root for the token drop
@@ -53,8 +50,6 @@ contract Dropper is Ownable {
     }
 
     struct DropFeeData {
-        // The owner share in basis points for each claim fee
-        uint16 ownerShareBps;
         // The fee to claim a drop in ETH
         uint256 claimFee;
         // Fees from drop claims will be sent here. Percentage bps must add to 10_000
@@ -100,14 +95,6 @@ contract Dropper is Ownable {
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
-
-    /// @notice The owner share in basis points (1/10000) for claim fee. This is cached per drop.
-    uint16 public currentOwnerShareBps;
-
-    constructor(address owner, uint16 initialOwnerShareBps) Ownable(owner) {
-        if (initialOwnerShareBps > 10_000) revert InvalidBps();
-        currentOwnerShareBps = initialOwnerShareBps;
-    }
 
     /**
      * @notice Permits the token and creates a new drop with the given parameters
@@ -166,7 +153,6 @@ contract Dropper is Ownable {
 
         dropStaticDatas[dropId] = dropStaticData;
         dropFeeDatas[dropId].claimFee = claimFee;
-        dropFeeDatas[dropId].ownerShareBps = currentOwnerShareBps;
 
         if (claimFee != 0) {
             // Validate fee recipients and send to storage
@@ -250,14 +236,9 @@ contract Dropper is Ownable {
         if (fee > 0) {
             if (address(this).balance < fee) revert InvalidMsgValue();
 
-            uint256 ownerShare = fee * dropFeeData.ownerShareBps / 10_000;
-            uint256 feeRecipientsShare = fee - ownerShare;
-
-            owner().call{ value: ownerShare, gas: 100_000 }("");
-
             for (uint256 i = 0; i < dropFeeData.feeRecipients.length; i++) {
                 dropFeeData.feeRecipients[i].recipient.call{
-                    value: dropFeeData.feeRecipients[i].percentageBps * feeRecipientsShare / 10_000,
+                    value: dropFeeData.feeRecipients[i].percentageBps * fee / 10_000,
                     gas: 100_000
                 }("");
             }
@@ -317,16 +298,5 @@ contract Dropper is Ownable {
      */
     function VERSION() external pure returns (string memory) {
         return "2.0.0";
-    }
-
-    /**
-     * @notice Set the owner share in basis points for claim fee for future drops
-     * @param newOwnerShareBps The owner share in basis points (1/10000)
-     */
-    function setOwnerShareBps(uint16 newOwnerShareBps) external onlyOwner {
-        if (newOwnerShareBps > 10_000) revert InvalidBps();
-
-        emit OwnerShareBpsSet(currentOwnerShareBps, newOwnerShareBps);
-        currentOwnerShareBps = newOwnerShareBps;
     }
 }

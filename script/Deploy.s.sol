@@ -69,13 +69,13 @@ contract DeployScript is Script, Test {
 
     function _deploy() internal returns (address) {
         vm.broadcast();
-        Dropper dropper = new Dropper(0xF498fd75Ee8D35294952343f1A77CAE5EA5aF6AA, 0);
+        Dropper dropper = new Dropper();
 
         return address(dropper);
     }
 
     function _getDropperVersion() internal returns (string memory) {
-        Dropper dropper = new Dropper(0xF498fd75Ee8D35294952343f1A77CAE5EA5aF6AA, 0);
+        Dropper dropper = new Dropper();
         return dropper.VERSION();
     }
 }

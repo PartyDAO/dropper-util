@@ -22,14 +22,12 @@ contract DropperTest is PRBTest, StdCheats {
 
     event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
 
-    event OwnerShareBpsSet(uint16 oldOwnerShareBps, uint16 ownerShareBps);
-
     Dropper public dropper;
     MockERC20 public token;
     Merkle public merkle;
 
     function setUp() public {
-        dropper = new Dropper(address(0xdead), 0.5e4);
+        dropper = new Dropper();
         token = new MockERC20();
         token.initialize("Mock Token", "MTK", 18);
         merkle = new Merkle();
@@ -76,7 +74,6 @@ contract DropperTest is PRBTest, StdCheats {
         }
 
         for (uint256 i = 0; i < recipients.length; i++) {
-            vm.assume(recipients[i] != address(0xdead));
             vm.assume(recipients[i] != address(this));
             vm.assume(recipients[i] != address(dropper));
             for (uint256 j = i; j < recipients.length; j++) {
@@ -271,8 +268,6 @@ contract DropperTest is PRBTest, StdCheats {
 
         (, Dropper.DropFeeData memory dropFeeData,) = dropper.getDrop(dropId);
 
-        assertEq(dropFeeData.ownerShareBps, dropper.currentOwnerShareBps());
-
         for (uint256 i = 0; i < 4; i++) {
             address member = recipients[i];
             uint256 amount = amounts[i];
@@ -284,7 +279,6 @@ contract DropperTest is PRBTest, StdCheats {
             vm.expectEmit(true, true, true, true);
             emit DropClaimed(dropId, member, address(token), amount);
 
-            uint256 ownerBalanceBefore = address(0xdead).balance;
             uint256[] memory feeRecipientBalancesBefore = new uint256[](feeRecipientAddresses.length);
 
             for (uint256 j = 0; j < feeRecipientAddresses.length; j++) {
@@ -294,17 +288,11 @@ contract DropperTest is PRBTest, StdCheats {
             vm.prank(member);
             dropper.claim{ value: dropFeeData.claimFee }(dropId, amount, proof);
 
-            assertEq(
-                address(0xdead).balance, ownerBalanceBefore + dropFeeData.claimFee * dropFeeData.ownerShareBps / 10_000
-            );
-
-            uint256 feeRecipientsFeeShare =
-                dropFeeData.claimFee - dropFeeData.claimFee * dropFeeData.ownerShareBps / 10_000;
             for (uint256 j = 0; j < feeRecipientAddresses.length; j++) {
                 assertEq(
                     feeRecipientAddresses[j].balance,
                     feeRecipientBalancesBefore[j]
-                        + feeRecipientsFeeShare * dropFeeData.feeRecipients[j].percentageBps / 10_000
+                        + dropFeeData.claimFee * dropFeeData.feeRecipients[j].percentageBps / 10_000
                 );
             }
 
@@ -677,27 +665,6 @@ contract DropperTest is PRBTest, StdCheats {
             new Dropper.FeeRecipient[](0),
             Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
-    }
-
-    function test_setOwnerShareBps_reverts_notOwner() external {
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
-        dropper.setOwnerShareBps(1);
-    }
-
-    function test_setOwnerShareBps_reverts_invalidBps() external {
-        vm.expectRevert(abi.encodeWithSelector(Dropper.InvalidBps.selector));
-        vm.prank(address(0xdead));
-        dropper.setOwnerShareBps(1e4 + 1);
-    }
-
-    function test_setOwnerShareBps_success() external {
-        vm.expectEmit(true, true, true, true);
-        emit OwnerShareBpsSet(0.5e4, 1e4);
-
-        vm.prank(address(0xdead));
-        dropper.setOwnerShareBps(1e4);
-
-        assertEq(dropper.currentOwnerShareBps(), 1e4);
     }
 
     function _signPermit(
