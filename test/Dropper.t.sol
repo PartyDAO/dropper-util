@@ -17,8 +17,7 @@ contract DropperTest is PRBTest, StdCheats {
         uint40 startTimestamp,
         uint40 expirationTimestamp,
         address expirationRecipient,
-        string merkleTreeURI,
-        string dropDescription
+        Dropper.MerkleMetadata metadata
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -30,7 +29,7 @@ contract DropperTest is PRBTest, StdCheats {
     Merkle public merkle;
 
     function setUp() public {
-        dropper = new Dropper();
+        dropper = new Dropper(address(this), 0.01 ether, 0.5e4);
         token = new MockERC20();
         token.initialize("Mock Token", "MTK", 18);
         merkle = new Merkle();
@@ -81,8 +80,7 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -93,8 +91,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
         assertEq(dropId, expectedDropId);
@@ -113,8 +112,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -130,8 +130,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(0),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -147,8 +148,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -164,8 +166,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -181,8 +184,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) - 1,
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -272,8 +276,7 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI",
-            "My Drop"
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
@@ -284,8 +287,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
         assertEq(dropId, expectedDropId);
@@ -382,8 +386,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp + 3601),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -439,8 +444,7 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp + 3600),
             address(this),
-            "someURI",
-            "My Drop"
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
 
         Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
@@ -454,8 +458,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -496,8 +501,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI",
-            "My Drop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -541,8 +547,9 @@ contract DropperTest is PRBTest, StdCheats {
             uint40(block.timestamp),
             uint40(block.timestamp) + 3600,
             address(this),
-            "someURI",
-            "My Airdrop"
+            address(this),
+            false,
+            Dropper.MerkleMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
