@@ -18,13 +18,10 @@ contract Dropper is Ownable {
 
     event DropCreated(
         uint256 indexed dropId,
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address indexed tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        MerkleMetadata merkleMetadata
+        DropStaticData dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] feeRecipients,
+        DropMetadata dropMetadata
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -35,27 +32,33 @@ contract Dropper is Ownable {
 
     event OwnerShareBpsSet(uint16 oldOwnerShareBps, uint16 ownerShareBps);
 
-    struct DropData {
+    struct DropStaticData {
         // Merkle root for the token drop
         bytes32 merkleRoot;
         // Total number of tokens to be dropped
         uint256 totalTokens;
-        // Number of tokens claimed so far
-        uint256 claimedTokens;
         // Address of the token to be dropped
         address tokenAddress;
         // Timestamp at which the drop will become live
         uint40 startTimestamp;
         // Timestamp at which the drop will expire
         uint40 expirationTimestamp;
+        // Address to which the remaining tokens will be refunded after expiration
+        address expirationRecipient;
+    }
+
+    struct FeeRecipient {
+        address recipient;
+        uint16 percentageBps;
+    }
+
+    struct DropFeeData {
         // The owner share in basis points for each claim fee
         uint16 ownerShareBps;
         // The fee to claim a drop in ETH
         uint256 claimFee;
-        // Address to which the remaining tokens will be refunded after expiration
-        address expirationRecipient;
-        // Fees from drop claims will be sent here
-        address feeRecipient;
+        // Fees from drop claims will be sent here. Percentage bps must add to 10_000
+        FeeRecipient[] feeRecipients;
     }
 
     struct PermitArgs {
@@ -66,7 +69,7 @@ contract Dropper is Ownable {
         bytes32 s;
     }
 
-    struct MerkleMetadata {
+    struct DropMetadata {
         string merkleTreeURI;
         string dropDescription;
     }
@@ -88,141 +91,111 @@ contract Dropper is Ownable {
     error ExpirationRecipientIsZero();
     error InvalidBps();
     error InvalidMsgValue();
+    error InvalidFeeRecipient();
 
-    mapping(uint256 => DropData) private drops;
+    mapping(uint256 => DropStaticData) private dropStaticDatas;
+    mapping(uint256 => DropFeeData) private dropFeeDatas;
+    mapping(uint256 => uint256) private claimedTokens;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
     uint256 public numDrops;
 
-    /// @notice The fee to claim a drop in ETH. This is cached per drop.
-    uint256 public currentClaimFee;
-
     /// @notice The owner share in basis points (1/10000) for claim fee. This is cached per drop.
     uint16 public currentOwnerShareBps;
 
-    constructor(address owner, uint256 initialClaimFee, uint16 initialOwnerShareBps) Ownable(owner) {
+    constructor(address owner, uint16 initialOwnerShareBps) Ownable(owner) {
         if (initialOwnerShareBps > 10_000) revert InvalidBps();
-        currentClaimFee = initialClaimFee;
         currentOwnerShareBps = initialOwnerShareBps;
     }
 
     /**
      * @notice Permits the token and creates a new drop with the given parameters
      * @param permitArgs The permit arguments to be passed to the token's permit function
-     * @param merkleRoot The merkle root of the merkle tree for the drop
-     * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
-     * rebasing
-     * @param startTimestamp The timestamp at which the drop will become live
-     * @param expirationTimestamp The timestamp at which the drop will expire
-     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param claimFeeEnabled Whether a claim fee is enabled for this drop
-     * @param merkleMetadata The metadata for the drop
+     * @param dropStaticData The static data for a drop (excluding fee data and metadata)
+     * @param claimFee The claim fee for the drop
+     * @param feeRecipients The fee recipients and their respective percentages
+     * @param dropMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function permitAndCreateDrop(
         PermitArgs calldata permitArgs,
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        address feeRecipient,
-        bool claimFeeEnabled,
-        MerkleMetadata calldata merkleMetadata
+        DropStaticData memory dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] calldata feeRecipients,
+        DropMetadata calldata dropMetadata
     )
         external
         returns (uint256)
     {
         // Revert if insufficient approval will be given by permit
-        if (permitArgs.amount < totalTokens) revert InsufficientPermitAmount();
+        if (permitArgs.amount < dropStaticData.totalTokens) revert InsufficientPermitAmount();
 
-        _callPermit(tokenAddress, permitArgs);
+        _callPermit(dropStaticData.tokenAddress, permitArgs);
 
-        return createDrop(
-            merkleRoot,
-            totalTokens,
-            tokenAddress,
-            startTimestamp,
-            expirationTimestamp,
-            expirationRecipient,
-            feeRecipient,
-            claimFeeEnabled,
-            merkleMetadata
-        );
+        return createDrop(dropStaticData, claimFee, feeRecipients, dropMetadata);
     }
 
     /**
      * @notice Create a new drop with the given parameters
-     * @param merkleRoot The merkle root of the merkle tree for the drop
-     * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
-     * rebasing
-     * @param startTimestamp The timestamp at which the drop will become live
-     * @param expirationTimestamp The timestamp at which the drop will expire
-     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param claimFeeEnabled Whether a claim fee is enabled for this drop
-     * @param merkleMetadata The metadata for the drop
+     * @param dropStaticData The static data for a drop (excluding fee data and metadata)
+     * @param claimFee The claim fee for the drop
+     * @param feeRecipients The fee recipients and their respective percentages
+     * @param dropMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        address feeRecipient,
-        bool claimFeeEnabled,
-        MerkleMetadata calldata merkleMetadata
+        DropStaticData memory dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] calldata feeRecipients,
+        DropMetadata calldata dropMetadata
     )
         public
         returns (uint256 dropId)
     {
-        if (merkleRoot == bytes32(0)) revert MerkleRootNotSet();
-        if (totalTokens == 0) revert TotalTokenIsZero();
-        if (tokenAddress == address(0)) revert TokenAddressIsZero();
-        if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
-        if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
-        if (expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
+        if (dropStaticData.merkleRoot == bytes32(0)) revert MerkleRootNotSet();
+        if (dropStaticData.totalTokens == 0) revert TotalTokenIsZero();
+        if (dropStaticData.tokenAddress == address(0)) revert TokenAddressIsZero();
+        if (dropStaticData.expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
+        if (dropStaticData.expirationTimestamp <= dropStaticData.startTimestamp) revert EndBeforeStart();
+        if (dropStaticData.expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
 
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalTokens);
+        IERC20(dropStaticData.tokenAddress).safeTransferFrom(msg.sender, address(this), dropStaticData.totalTokens);
 
         dropId = ++numDrops;
 
-        drops[dropId] = DropData({
-            merkleRoot: merkleRoot,
-            totalTokens: totalTokens,
-            claimedTokens: 0,
-            tokenAddress: tokenAddress,
-            startTimestamp: startTimestamp,
-            expirationTimestamp: expirationTimestamp,
-            ownerShareBps: claimFeeEnabled ? currentOwnerShareBps : 0,
-            claimFee: claimFeeEnabled ? currentClaimFee : 0,
-            expirationRecipient: expirationRecipient,
-            feeRecipient: feeRecipient
-        });
+        dropStaticDatas[dropId] = dropStaticData;
+        dropFeeDatas[dropId].claimFee = claimFee;
+        dropFeeDatas[dropId].ownerShareBps = currentOwnerShareBps;
 
-        emit DropCreated(
-            dropId,
-            merkleRoot,
-            totalTokens,
-            tokenAddress,
-            startTimestamp,
-            expirationTimestamp,
-            expirationRecipient,
-            merkleMetadata
-        );
+        if (claimFee != 0) {
+            // Validate fee recipients and send to storage
+            uint16 sumBps;
+            for (uint256 i = 0; i < feeRecipients.length; i++) {
+                if (feeRecipients[i].recipient == address(0)) revert InvalidFeeRecipient();
+                if (feeRecipients[i].percentageBps == 0) revert InvalidFeeRecipient();
+                dropFeeDatas[dropId].feeRecipients.push(feeRecipients[i]);
+                sumBps += feeRecipients[i].percentageBps;
+            }
+            if (sumBps != 10_000) revert InvalidBps();
+        }
+
+        emit DropCreated(dropId, dropStaticData, claimFee, feeRecipients, dropMetadata);
     }
 
     /**
      * @notice Get the drop data for a given drop ID
      */
-    function getDrop(uint256 dropId) external view returns (DropData memory) {
+    function getDrop(uint256 dropId)
+        external
+        view
+        returns (DropStaticData memory dropStaticData, DropFeeData memory dropFeeData, uint256 dropTokensClaimed)
+    {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
-        return drops[dropId];
+
+        dropStaticData = dropStaticDatas[dropId];
+        dropFeeData = dropFeeDatas[dropId];
+        dropTokensClaimed = claimedTokens[dropId];
     }
 
     /**
@@ -231,13 +204,14 @@ contract Dropper is Ownable {
      */
     function refundToRecipient(uint256 dropId) external {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
-        DropData storage drop = drops[dropId];
+        DropStaticData storage drop = dropStaticDatas[dropId];
+        uint256 dropClaimedTokens = claimedTokens[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
-        if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
+        if (drop.totalTokens == dropClaimedTokens) revert AllTokensClaimed();
 
         address expirationRecipient = drop.expirationRecipient;
-        uint256 tokensToRefund = drop.totalTokens - drop.claimedTokens;
-        drop.claimedTokens = drop.totalTokens;
+        uint256 tokensToRefund = drop.totalTokens - dropClaimedTokens;
+        claimedTokens[dropId] = drop.totalTokens;
         address tokenAddress = drop.tokenAddress;
 
         IERC20(tokenAddress).safeTransfer(expirationRecipient, tokensToRefund);
@@ -253,31 +227,40 @@ contract Dropper is Ownable {
      */
     function _claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) internal {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
-        DropData storage drop = drops[dropId];
+        DropStaticData memory drop = dropStaticDatas[dropId];
+        DropFeeData memory dropFeeData = dropFeeDatas[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
         if (hasClaimed[dropId][msg.sender]) revert DropAlreadyClaimed();
-        if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
+        uint256 dropClaimedTokens = claimedTokens[dropId];
+        if (dropClaimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf)) revert InvalidMerkleProof();
 
         hasClaimed[dropId][msg.sender] = true;
-        drop.claimedTokens += amount;
+        claimedTokens[dropId] = dropClaimedTokens + amount;
 
         address tokenAddress = drop.tokenAddress;
         IERC20(tokenAddress).safeTransfer(msg.sender, amount);
 
         // Distribute fee
-        uint256 fee = drop.claimFee;
+        uint256 fee = dropFeeData.claimFee;
 
         if (fee > 0) {
             if (address(this).balance < fee) revert InvalidMsgValue();
 
-            uint256 ownerShare = fee * drop.ownerShareBps / 10_000;
+            uint256 ownerShare = fee * dropFeeData.ownerShareBps / 10_000;
+            uint256 feeRecipientsShare = fee - ownerShare;
 
             owner().call{ value: ownerShare, gas: 100_000 }("");
-            drop.feeRecipient.call{ value: fee - ownerShare, gas: 100_000 }("");
+
+            for (uint256 i = 0; i < dropFeeData.feeRecipients.length; i++) {
+                dropFeeData.feeRecipients[i].recipient.call{
+                    value: dropFeeData.feeRecipients[i].percentageBps * feeRecipientsShare / 10_000,
+                    gas: 100_000
+                }("");
+            }
         }
 
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
@@ -334,15 +317,6 @@ contract Dropper is Ownable {
      */
     function VERSION() external pure returns (string memory) {
         return "2.0.0";
-    }
-
-    /**
-     * @notice Set the claim fee for future drops
-     * @param newClaimFee The fee to claim a drop in ETH
-     */
-    function setClaimFee(uint256 newClaimFee) external onlyOwner {
-        emit ClaimFeeSet(currentClaimFee, newClaimFee);
-        currentClaimFee = newClaimFee;
     }
 
     /**
