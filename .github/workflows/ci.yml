@@ -111,9 +111,10 @@ jobs:
         run: "bun install"
 
       - name: "Run coverage"
-        run: "bun test:coverage:report"
+        run: "forge coverage --report lcov"
 
       - name: "Upload coverage"
         uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
