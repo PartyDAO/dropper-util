@@ -94,7 +94,7 @@ jobs:
           echo "## Tests result" >> $GITHUB_STEP_SUMMARY
           echo "✅ Passed" >> $GITHUB_STEP_SUMMARY
 
-  test:
+  coverage:
     needs: ["lint", "build"]
     runs-on: "ubuntu-latest"
     steps:
