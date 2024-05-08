@@ -112,9 +112,8 @@ jobs:
 
       - name: "Run coverage"
         run: "bun test:coverage:report"
-      
+
       - name: "Upload coverage"
         uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-

@@ -1,6 +1,7 @@
 [![codecov](https://codecov.io/gh/PartyDAO/dropper-util/graph/badge.svg?token=7IDZRX1TMT)](https://codecov.io/gh/PartyDAO/dropper-util)
 
 # Dropper Util
+
 PartyDao dropper util used for easily creating ERC20 airdrops with merkle trees.
 
 ## Usage
