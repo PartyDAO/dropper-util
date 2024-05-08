@@ -54,10 +54,7 @@ contract DropperTest is PRBTest, StdCheats {
             vm.assume(feeRecipientAddresses.length != 0);
             for (uint256 i = 0; i < feeRecipients.length; i++) {
                 vm.assume(uint256(uint160(feeRecipientAddresses[i])) > 1e5);
-                vm.assume(feeRecipientAddresses[i] != address(this));
-                vm.assume(feeRecipientAddresses[i] != address(dropper));
-                vm.assume(feeRecipientAddresses[i] != address(token));
-                vm.assume(feeRecipientAddresses[i] != VM_ADDRESS);
+                vm.assume(feeRecipientAddresses[i].code.length == 0);
 
                 feeRecipients[i].recipient = feeRecipientAddresses[i];
                 feeRecipients[i] = Dropper.FeeRecipient({ recipient: feeRecipientAddresses[i], percentageBps: 2500 });
