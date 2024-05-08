@@ -325,6 +325,11 @@ contract DropperTest is PRBTest, StdCheats {
         dropper.claim{ value: drop.claimFee - 1 }(dropId, amounts[0], proof);
     }
 
+    function test_claim_revert_invalidDropId() external {
+        vm.expectRevert(Dropper.InvalidDropId.selector);
+        dropper.claim(0, 100, new bytes32[](0));
+    }
+
     function testClaimDropExpired(address[4] memory recipients, uint40[4] memory amounts) public {
         (uint256 dropId, bytes32[] memory merkleLeaves) = testCreateDrop(recipients, amounts);
 
@@ -665,6 +670,10 @@ contract DropperTest is PRBTest, StdCheats {
             new Dropper.FeeRecipient[](0),
             Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
+    }
+
+    function test_VERSION() external {
+        assertEq(dropper.VERSION(), "2.0.0");
     }
 
     function _signPermit(
