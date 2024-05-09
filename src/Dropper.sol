@@ -27,8 +27,6 @@ contract Dropper {
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
-    event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
-
     struct DropStaticData {
         // Merkle root for the token drop
         bytes32 merkleRoot;

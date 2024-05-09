@@ -20,8 +20,6 @@ contract DropperTest is PRBTest, StdCheats {
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
-    event ClaimFeeSet(uint256 oldClaimFee, uint256 claimFee);
-
     Dropper public dropper;
     MockERC20 public token;
     Merkle public merkle;
