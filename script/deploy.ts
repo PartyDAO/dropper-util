@@ -1,7 +1,7 @@
 import fs from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { exec, execSync } from "child_process";
+import { ChildProcessWithoutNullStreams, exec, execSync, spawn } from "child_process";
 import { ethers } from "ethers";
 
 yargs(hideBin(process.argv))
@@ -49,7 +49,7 @@ yargs(hideBin(process.argv))
       return yargs;
     },
     async (argv) => {
-      console.log(await getContractVersion("0x2871e49a08AceE842C8F225bE7BFf9cC311b9F43", "https://sepolia.base.org"));
+      console.log(validateDeploy("Dropper", { address: "test", deployedArgs: "", version: "1.0.0" }, "11155111"));
     },
   )
   .parse();
@@ -60,12 +60,18 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
     throw new Error(`Contract ${contract} not found in project`);
   }
 
-  const createCommand = `forge create ${contract} --private-key ${privateKey} --rpc-url ${rpcUrl} --verify ${
-    !!constructorArgs && constructorArgs.length > 0 ? "--constructor-args " + constructorArgs.join(" ") : ""
-  }`;
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const { chainId } = await provider.getNetwork();
 
   const encodedConstructorArgs = encodeConstructorArgs(contract, constructorArgs);
   let newDeploy: Deploy = { deployedArgs: encodedConstructorArgs } as Deploy;
+  newDeploy.version = await getUndeployedContractVersion(contract);
+
+  validateDeploy(contract, newDeploy, chainId.toString());
+
+  const createCommand = `forge create ${contract} --private-key ${privateKey} --rpc-url ${rpcUrl} --verify ${
+    !!constructorArgs && constructorArgs.length > 0 ? "--constructor-args " + constructorArgs.join(" ") : ""
+  }`;
 
   const out = await execSync(createCommand);
   const lines = out.toString().split("\n");
@@ -76,11 +82,25 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
     }
   }
 
-  newDeploy.version = await getContractVersion(newDeploy.address, rpcUrl);
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const { chainId } = await provider.getNetwork();
   writeDeploy(contract, newDeploy, chainId.toString());
+}
+
+function validateDeploy(contract: string, deploy: Deploy, chainId: string) {
+  // First check if deployment file exists
+  if (!fs.existsSync(`deployments/${chainId}.json`)) {
+    initProject(chainId);
+  }
+  const existingDeployments = JSON.parse(fs.readFileSync(`deployments/${chainId}.json`, "utf-8"));
+
+  if (
+    !!existingDeployments.contracts[contract].deploys.find(
+      (d: Deploy) => d.version == deploy.version && d.deployedArgs == deploy.deployedArgs,
+    )
+  ) {
+    throw new Error(
+      `Contract ${contract} with version ${deploy.version} and deployed args ${deploy.deployedArgs || "<empty>"} already deployed`,
+    );
+  }
 }
 
 function writeDeploy(contract: string, deploy: Deploy, chainId: string) {
@@ -91,6 +111,38 @@ function writeDeploy(contract: string, deploy: Deploy, chainId: string) {
   const existingDeployments = JSON.parse(fs.readFileSync(`deployments/${chainId}.json`, "utf-8"));
   existingDeployments.contracts[contract].deploys.push(deploy);
   fs.writeFileSync(`deployments/${chainId}.json`, JSON.stringify(existingDeployments));
+}
+
+async function launchAnvil(): Promise<ChildProcessWithoutNullStreams> {
+  var anvil = spawn("anvil", ["--mnemonic-seed-unsafe", "123"]);
+  return new Promise((resolve) => {
+    anvil.stdout.on("data", function (data) {
+      if (data.includes("Listening")) {
+        resolve(anvil);
+      }
+    });
+  });
+}
+
+async function getUndeployedContractVersion(contractName: string): Promise<string> {
+  const anvil = await launchAnvil();
+
+  const createCommand = `forge create ${contractName} --private-key 0x78427d179c2c0f8467881bc37f9453a99854977507ca53ff65e1c875208a4a03 --rpc-url "127.0.0.1:8545"`;
+  let addr = "";
+
+  const out = await execSync(createCommand);
+  const lines = out.toString().split("\n");
+  for (const line of lines) {
+    if (line.startsWith("Deployed to: ")) {
+      // Get the address
+      addr = line.split("Deployed to: ")[1];
+    }
+  }
+
+  const res = await getContractVersion(addr, "http://127.0.0.1:8545");
+  anvil.kill();
+
+  return res;
 }
 
 async function getContractVersion(contractAddress: string, rpcUrl: string): Promise<string> {
@@ -140,6 +192,10 @@ function initProject(chainId: string) {
       constructorArgs: [],
     };
   });
+
+  if(!fs.existsSync("deployments")) {
+    fs.mkdirSync("deployments");
+  }
 
   fs.writeFileSync(`deployments/${chainId}.json`, JSON.stringify(fileToStore));
 }
