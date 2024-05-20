@@ -42,16 +42,6 @@ yargs(hideBin(process.argv))
       initProject(argv.chainId);
     },
   )
-  .command(
-    "temp",
-    "temp func",
-    (yargs) => {
-      return yargs;
-    },
-    async (argv) => {
-      console.log(validateDeploy("Dropper", { address: "test", deployedArgs: "", version: "1.0.0" }, "11155111"));
-    },
-  )
   .parse();
 
 async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constructorArgs: any) {
@@ -61,13 +51,18 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
   }
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const { chainId } = await provider.getNetwork();
+  const chainId = (await provider.getNetwork()).chainId.toString();
+
+  // If no constructor args are given, try to resolve from deployment file
+  if (constructorArgs.length == 0) {
+    constructorArgs = resolveConstructorArgs(contract, chainId);
+  }
 
   const encodedConstructorArgs = encodeConstructorArgs(contract, constructorArgs);
   let newDeploy: Deploy = { deployedArgs: encodedConstructorArgs } as Deploy;
   newDeploy.version = await getUndeployedContractVersion(contract);
 
-  validateDeploy(contract, newDeploy, chainId.toString());
+  validateDeploy(contract, newDeploy, chainId);
 
   const createCommand = `forge create ${contract} --private-key ${privateKey} --rpc-url ${rpcUrl} --verify ${
     !!constructorArgs && constructorArgs.length > 0 ? "--constructor-args " + constructorArgs.join(" ") : ""
@@ -82,9 +77,55 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
     }
   }
 
-  writeDeploy(contract, newDeploy, chainId.toString());
+  writeDeploy(contract, newDeploy, chainId);
 }
 
+/**
+ * Resolves the constructor arguments for a contract. Must be other contracts in the repo or constants in the deployment file.
+ * @param contractName Contract to resolve args for
+ * @param chainId Chain to deploy to
+ */
+function resolveConstructorArgs(contractName: string, chainId: string): string[] {
+  if (!fs.existsSync(`deployments/${chainId}.json`)) {
+    throw new Error(`Deployment file for network ${chainId} does not exist`);
+  }
+  const deploymentFile: DeploymentFile = JSON.parse(fs.readFileSync(`deployments/${chainId}.json`, "utf-8"));
+
+  if (contractName in deploymentFile.contracts) {
+    throw new Error(`Contract ${contractName} does not exist in project`);
+  }
+  if (deploymentFile.contracts[contractName].constructorArgs.length == 0) {
+    throw new Error(`Contract ${contractName} does not have any constructor args specified`);
+  }
+
+  const args = deploymentFile.contracts[contractName].constructorArgs;
+
+  let resolvedArgs: string[] = new Array<string>(args.length);
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] in deploymentFile.contracts) {
+      const contractObj = deploymentFile.contracts[args[i]];
+      if (contractObj.deploys.length == 0) throw new Error(`Contract ${args[i]} doesn't have any deploy`);
+      resolvedArgs[i] = contractObj.deploys.at(-1)!.address;
+    } else {
+      // Must be in constants or revert
+      if (args[i] in deploymentFile.constants) {
+        resolvedArgs[i] = deploymentFile.constants[args[i]];
+      } else {
+        throw new Error(`Argument ${args[i]} not found in deployment file or constants`);
+      }
+    }
+  }
+
+  return resolvedArgs;
+}
+
+/**
+ * Validates a deploy. Should be called prior to writing anything to chain.
+ * @param contract Name of the contract to be deployed
+ * @param deploy Deployments specifications to be used
+ * @param chainId Chain to deploy to
+ */
 function validateDeploy(contract: string, deploy: Deploy, chainId: string) {
   // First check if deployment file exists
   if (!fs.existsSync(`deployments/${chainId}.json`)) {
@@ -103,6 +144,12 @@ function validateDeploy(contract: string, deploy: Deploy, chainId: string) {
   }
 }
 
+/**
+ * Writes a new deploy to the deployment file
+ * @param contract Name of the contract deployed
+ * @param deploy Deployments specifications
+ * @param chainId The chain deployed to
+ */
 function writeDeploy(contract: string, deploy: Deploy, chainId: string) {
   // First check if deployment file exists
   if (!fs.existsSync(`deployments/${chainId}.json`)) {
@@ -113,6 +160,10 @@ function writeDeploy(contract: string, deploy: Deploy, chainId: string) {
   fs.writeFileSync(`deployments/${chainId}.json`, JSON.stringify(existingDeployments));
 }
 
+/**
+ * Launches a local anvil instance using the `mnemonic-seed` 123
+ * @returns Returns the child process. Must be killed.
+ */
 async function launchAnvil(): Promise<ChildProcessWithoutNullStreams> {
   var anvil = spawn("anvil", ["--mnemonic-seed-unsafe", "123"]);
   return new Promise((resolve) => {
@@ -124,6 +175,11 @@ async function launchAnvil(): Promise<ChildProcessWithoutNullStreams> {
   });
 }
 
+/**
+ * Gets the version of an undeployed contract via deploying to a local network.
+ * @param contractName Name of the contract in the repo
+ * @returns
+ */
 async function getUndeployedContractVersion(contractName: string): Promise<string> {
   const anvil = await launchAnvil();
 
@@ -145,6 +201,12 @@ async function getUndeployedContractVersion(contractName: string): Promise<strin
   return res;
 }
 
+/**
+ * Fetches the version of the given contract by calling `VERSION`
+ * @param contractAddress Address the contract is deployed to
+ * @param rpcUrl RPC to connect to the network where the contract is deployed
+ * @returns
+ */
 async function getContractVersion(contractAddress: string, rpcUrl: string): Promise<string> {
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const versionRes = await provider.call({ to: contractAddress, data: "0xffa1ad74" /* Version function */ });
@@ -169,6 +231,10 @@ type Contract = {
   deploys: Deploy[];
   constructorArgs: string[];
 };
+type DeploymentFile = {
+  contracts: { [key: string]: Contract };
+  constants: { [key: string]: string };
+};
 
 /**
  * Initialize the deployment file for a given network
@@ -181,7 +247,7 @@ function initProject(chainId: string) {
     throw new Error(`Deployment file for network ${chainId} already exists`);
   }
 
-  let fileToStore: { [key: string]: { [key: string]: Contract } | { [key: string]: string } } = {
+  let fileToStore: DeploymentFile = {
     contracts: {},
     constants: {},
   };
@@ -193,13 +259,17 @@ function initProject(chainId: string) {
     };
   });
 
-  if(!fs.existsSync("deployments")) {
+  if (!fs.existsSync("deployments")) {
     fs.mkdirSync("deployments");
   }
 
   fs.writeFileSync(`deployments/${chainId}.json`, JSON.stringify(fileToStore));
 }
 
+/**
+ * Gets all the deployable contracts in the project
+ * @returns An array of contract names not including the path or extension
+ */
 function getProjectContracts(): string[] {
   exec("forge build", (err) => {
     if (err) {
