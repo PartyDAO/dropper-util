@@ -91,11 +91,8 @@ function resolveConstructorArgs(contractName: string, chainId: string): string[]
   }
   const deploymentFile: DeploymentFile = JSON.parse(fs.readFileSync(`deployments/${chainId}.json`, "utf-8"));
 
-  if (contractName in deploymentFile.contracts) {
+  if (!(contractName in deploymentFile.contracts)) {
     throw new Error(`Contract ${contractName} does not exist in project`);
-  }
-  if (deploymentFile.contracts[contractName].constructorArgs.length == 0) {
-    throw new Error(`Contract ${contractName} does not have any constructor args specified`);
   }
 
   const args = deploymentFile.contracts[contractName].constructorArgs;
