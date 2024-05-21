@@ -61,3 +61,4 @@ jobs:
           CONTRACT: ${{ github.event.inputs.contract }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           RPC_URL: ${{ env.RPC_URL }}
+          BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
