@@ -33,28 +33,31 @@ jobs:
       - name: Install packages
         run: npm install
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
       - name: Set RPC URL for mainnet
         if: ${{ github.event.inputs.network == 'mainnet' }}
-        run: echo "RPC_URL=${{ secrets.mainnet_rpc_url }}" >> $GITHUB_ENV
+        run: echo "RPC_URL=${{ secrets.MAINNET_RPC_URL }}" >> $GITHUB_ENV
 
       - name: Set RPC URL for sepolia
         if: ${{ github.event.inputs.network == 'sepolia' }}
-        run: echo "RPC_URL=${{ secrets.sepolia_rpc_url }}" >> $GITHUB_ENV
+        run: echo "RPC_URL=${{ secrets.SEPOLIA_RPC_URL }}" >> $GITHUB_ENV
 
       - name: Set RPC URL for base
         if: ${{ github.event.inputs.network == 'base' }}
-        run: echo "RPC_URL=${{ secrets.base_rpc_url }}" >> $GITHUB_ENV
+        run: echo "RPC_URL=${{ secrets.BASE_RPC_URL }}" >> $GITHUB_ENV
 
       - name: Set RPC URL for base-sepolia
         if: ${{ github.event.inputs.network == 'base-sepolia' }}
-        run: echo "RPC_URL=${{ secrets.base_sepolia_rpc_url }}" >> $GITHUB_ENV
+        run: echo "RPC_URL=${{ secrets.BASE_SEPOLIA_RPC_URL }}" >> $GITHUB_ENV
 
       - name: Run Deploy
         run: |
-          npx ts-node script/deploy.ts deploy ${{ github.event.inputs.contract }} --rpc ${{ env.RPC_URL }} --pk ${{ secrets.private_key }}
+          forge script script/Deploy.s.sol:Deploy --rpc-url ${{ env.RPC_URL }} --private-key ${{ secrets.PRIVATE_KEY }} --broadcast
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
           NETWORK: ${{ github.event.inputs.network }}
           CONTRACT: ${{ github.event.inputs.contract }}
-          PRIVATE_KEY: ${{ secrets.private_key }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           RPC_URL: ${{ env.RPC_URL }}
