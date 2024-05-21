@@ -60,6 +60,9 @@ jobs:
           RPC_URL: ${{ env.RPC_URL }}
           BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
 
+      - name: Prettier Fix
+        run: npm run prettier:write
+
       - name: Commit and push changes
         run: |
           git config --global user.name 'GitHub Actions Bot'
