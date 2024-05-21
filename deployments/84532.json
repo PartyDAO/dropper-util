@@ -1,9 +1,1 @@
-{
-  "contracts": {
-    "Dropper": {
-      "deploys": [],
-      "constructorArgs": []
-    }
-  },
-  "constants": {}
-}
+{"contracts":{"Dropper":{"deploys":[{"deployedArgs":"0x","version":"1.0.0","address":"0xFD2Fada50AAb0D1B9431642868931441370eE14C"}],"constructorArgs":[]}},"constants":{}}
