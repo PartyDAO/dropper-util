@@ -51,7 +51,7 @@ jobs:
 
       - name: Run Deploy
         run: |
-          node deploy.js deploy ${{ github.event.inputs.contract }} --rpc ${{ env.RPC_URL }} --pk ${{ secrets.private_key }}
+          ts-node deploy.ts deploy ${{ github.event.inputs.contract }} --rpc ${{ env.RPC_URL }} --pk ${{ secrets.private_key }}
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
           NETWORK: ${{ github.event.inputs.network }}
