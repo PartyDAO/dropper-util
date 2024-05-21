@@ -62,5 +62,7 @@ jobs:
 
       - name: Commit and push changes
         run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email '<>'
           git commit -a -m "CI deployment of ${{ github.event.inputs.contract }}"
           git push
