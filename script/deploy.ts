@@ -54,7 +54,7 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
   const chainId = (await provider.getNetwork()).chainId.toString();
 
   // If no constructor args are given, try to resolve from deployment file
-  if (constructorArgs.length == 0) {
+  if (!constructorArgs || constructorArgs.length == 0) {
     constructorArgs = resolveConstructorArgs(contract, chainId);
   }
 
@@ -64,6 +64,7 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
 
   validateDeploy(contract, newDeploy, chainId);
 
+  console.log("Deploying contract...");
   const createCommand = `forge create ${contract} --private-key ${privateKey} --rpc-url ${rpcUrl} --verify ${
     !!constructorArgs && constructorArgs.length > 0 ? "--constructor-args " + constructorArgs.join(" ") : ""
   }`;
@@ -76,6 +77,8 @@ async function runDeploy(contract: string, rpcUrl: any, privateKey: any, constru
       newDeploy.address = line.split("Deployed to: ")[1];
     }
   }
+
+  console.log(`Contract ${contract} deployed to ${newDeploy.address} with version ${newDeploy.version}`);
 
   writeDeploy(contract, newDeploy, chainId);
 }
@@ -268,11 +271,8 @@ function initProject(chainId: string) {
  * @returns An array of contract names not including the path or extension
  */
 function getProjectContracts(): string[] {
-  exec("forge build", (err) => {
-    if (err) {
-      throw new Error("Failed to build project");
-    }
-  });
+  console.log("Building project...");
+  execSync("forge build");
   const buildCache = JSON.parse(fs.readFileSync("cache/solidity-files-cache.json", "utf-8"));
   // Get files in src directory
   const filesOfInterest = Object.keys(buildCache.files).filter((file: string) => file.startsWith("src/"));

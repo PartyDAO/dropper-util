@@ -1,8 +1,11 @@
 {
-  "Dropper": [
-    {
-      "version": "1.0.0",
-      "address": "0xf7dfc33c76f84a5c852f5366598e67cce91bad53"
+  "contracts": {
+    "Dropper": {
+      "deploys": [
+        { "deployedArgs": "0x", "version": "1.0.0", "address": "0xf7dfc33c76f84a5c852f5366598e67cce91bad53" }
+      ],
+      "constructorArgs": []
     }
-  ]
+  },
+  "constants": {}
 }
