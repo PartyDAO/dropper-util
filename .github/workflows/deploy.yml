@@ -1,9 +1,6 @@
 name: Deploy
 
 on:
-  push:
-    branches:
-      - feat/deployment-update-worflow
   workflow_dispatch:
     inputs:
       network:
@@ -62,3 +59,8 @@ jobs:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           RPC_URL: ${{ env.RPC_URL }}
           BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
+
+      - name: Commit and push changes
+        run: |
+          git commit -a -m "CI deployment of ${{ github.event.inputs.contract }}"
+          git push
