@@ -1,6 +1,9 @@
 name: Deploy
 
 on:
+  push:
+    branches:
+      - feat/deployment-update-worflow
   workflow_dispatch:
     inputs:
       network:
