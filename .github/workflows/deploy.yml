@@ -54,7 +54,7 @@ jobs:
 
       - name: Run Deploy
         run: |
-          forge script script/Deploy.s.sol:Deploy --rpc-url ${{ env.RPC_URL }} --private-key ${{ secrets.PRIVATE_KEY }} --broadcast
+          npx ts-node script/deploy.ts deploy ${{ github.event.inputs.contract }} --rpc ${{ env.RPC_URL }} --pk ${{ secrets.private_key }}
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
           NETWORK: ${{ github.event.inputs.network }}
