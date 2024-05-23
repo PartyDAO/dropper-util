@@ -2,7 +2,7 @@
   "contracts": {
     "Dropper": {
       "deploys": [
-        { "deployedArgs": "0x", "version": "1.0.0", "address": "0x680168736298451b945F1Dc5D952408C102E7De7" }
+        { "deployedArgs": "0x", "version": "1.0.0", "address": "0xf7dfc33c76f84a5c852f5366598e67cce91bad53" }
       ],
       "constructorArgs": []
     }
