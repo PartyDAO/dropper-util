@@ -53,7 +53,6 @@ jobs:
         run: |
           npx ts-node script/deploy.ts deploy ${{ github.event.inputs.contract }} --rpc ${{ env.RPC_URL }} --pk ${{ secrets.private_key }}
         env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
           NETWORK: ${{ github.event.inputs.network }}
           CONTRACT: ${{ github.event.inputs.contract }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
