@@ -17,27 +17,21 @@ contract Dropper {
 
     event DropCreated(
         uint256 indexed dropId,
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address indexed tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        string merkleTreeURI,
-        string dropDescription
+        DropStaticData dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] feeRecipients,
+        DropMetadata dropMetadata
     );
 
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
-    struct DropData {
+    struct DropStaticData {
         // Merkle root for the token drop
         bytes32 merkleRoot;
         // Total number of tokens to be dropped
         uint256 totalTokens;
-        // Number of tokens claimed so far
-        uint256 claimedTokens;
         // Address of the token to be dropped
         address tokenAddress;
         // Timestamp at which the drop will become live
@@ -48,12 +42,29 @@ contract Dropper {
         address expirationRecipient;
     }
 
+    struct FeeRecipient {
+        address recipient;
+        uint16 percentageBps;
+    }
+
+    struct DropFeeData {
+        // The fee to claim a drop in ETH
+        uint256 claimFee;
+        // Fees from drop claims will be sent here. Percentage bps must add to 10_000
+        FeeRecipient[] feeRecipients;
+    }
+
     struct PermitArgs {
         uint256 amount;
         uint256 deadline;
         uint8 v;
         bytes32 r;
         bytes32 s;
+    }
+
+    struct DropMetadata {
+        string merkleTreeURI;
+        string dropDescription;
     }
 
     error InsufficientPermitAmount();
@@ -71,8 +82,13 @@ contract Dropper {
     error ArityMismatch();
     error InvalidDropId();
     error ExpirationRecipientIsZero();
+    error InvalidBps();
+    error InvalidMsgValue();
+    error InvalidFeeRecipient();
 
-    mapping(uint256 => DropData) public drops;
+    mapping(uint256 => DropStaticData) private dropStaticDatas;
+    mapping(uint256 => DropFeeData) private dropFeeDatas;
+    mapping(uint256 => uint256) private claimedTokens;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
     /// @notice The number of drops created on this contract
@@ -81,106 +97,89 @@ contract Dropper {
     /**
      * @notice Permits the token and creates a new drop with the given parameters
      * @param permitArgs The permit arguments to be passed to the token's permit function
-     * @param merkleRoot The merkle root of the merkle tree for the drop
-     * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
-     * rebasing
-     * @param startTimestamp The timestamp at which the drop will become live
-     * @param expirationTimestamp The timestamp at which the drop will expire
-     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param merkleTreeURI The URI of the full merkle tree for the drop
-     * @param dropDescription A description of the drop emitted at creation
+     * @param dropStaticData The static data for a drop (excluding fee data and metadata)
+     * @param claimFee The claim fee for the drop
+     * @param feeRecipients The fee recipients and their respective percentages
+     * @param dropMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function permitAndCreateDrop(
         PermitArgs calldata permitArgs,
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        string calldata merkleTreeURI,
-        string calldata dropDescription
+        DropStaticData calldata dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] calldata feeRecipients,
+        DropMetadata calldata dropMetadata
     )
         external
         returns (uint256)
     {
         // Revert if insufficient approval will be given by permit
-        if (permitArgs.amount < totalTokens) revert InsufficientPermitAmount();
+        if (permitArgs.amount < dropStaticData.totalTokens) revert InsufficientPermitAmount();
 
-        _callPermit(tokenAddress, permitArgs);
+        _callPermit(dropStaticData.tokenAddress, permitArgs);
 
-        return createDrop(
-            merkleRoot,
-            totalTokens,
-            tokenAddress,
-            startTimestamp,
-            expirationTimestamp,
-            expirationRecipient,
-            merkleTreeURI,
-            dropDescription
-        );
+        return createDrop(dropStaticData, claimFee, feeRecipients, dropMetadata);
     }
 
     /**
      * @notice Create a new drop with the given parameters
-     * @param merkleRoot The merkle root of the merkle tree for the drop
-     * @param totalTokens The total number of tokens to be dropped
-     * @param tokenAddress The address of the ERC20 token to be dropped. Note: token may not have fee on transfer or
-     * rebasing
-     * @param startTimestamp The timestamp at which the drop will become live
-     * @param expirationTimestamp The timestamp at which the drop will expire
-     * @param expirationRecipient The address to which the remaining tokens will be refunded after expiration
-     * @param merkleTreeURI The URI of the full merkle tree for the drop
-     * @param dropDescription A description of the drop emitted at creation
+     * @param dropStaticData The static data for a drop (excluding fee data and metadata)
+     * @param claimFee The claim fee for the drop
+     * @param feeRecipients The fee recipients and their respective percentages
+     * @param dropMetadata The metadata for the drop
      * @return dropId The ID of the newly created drop
      */
     function createDrop(
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        string calldata merkleTreeURI,
-        string calldata dropDescription
+        DropStaticData calldata dropStaticData,
+        uint256 claimFee,
+        FeeRecipient[] calldata feeRecipients,
+        DropMetadata calldata dropMetadata
     )
         public
         returns (uint256 dropId)
     {
-        if (merkleRoot == bytes32(0)) revert MerkleRootNotSet();
-        if (totalTokens == 0) revert TotalTokenIsZero();
-        if (tokenAddress == address(0)) revert TokenAddressIsZero();
-        if (expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
-        if (expirationTimestamp <= startTimestamp) revert EndBeforeStart();
-        if (expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
+        if (dropStaticData.merkleRoot == bytes32(0)) revert MerkleRootNotSet();
+        if (dropStaticData.totalTokens == 0) revert TotalTokenIsZero();
+        if (dropStaticData.tokenAddress == address(0)) revert TokenAddressIsZero();
+        if (dropStaticData.expirationTimestamp <= block.timestamp) revert ExpirationTimestampInPast();
+        if (dropStaticData.expirationTimestamp <= dropStaticData.startTimestamp) revert EndBeforeStart();
+        if (dropStaticData.expirationRecipient == address(0)) revert ExpirationRecipientIsZero();
 
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), totalTokens);
+        IERC20(dropStaticData.tokenAddress).safeTransferFrom(msg.sender, address(this), dropStaticData.totalTokens);
 
         dropId = ++numDrops;
 
-        drops[dropId] = DropData({
-            merkleRoot: merkleRoot,
-            totalTokens: totalTokens,
-            claimedTokens: 0,
-            tokenAddress: tokenAddress,
-            startTimestamp: startTimestamp,
-            expirationTimestamp: expirationTimestamp,
-            expirationRecipient: expirationRecipient
-        });
+        dropStaticDatas[dropId] = dropStaticData;
+        dropFeeDatas[dropId].claimFee = claimFee;
 
-        emit DropCreated(
-            dropId,
-            merkleRoot,
-            totalTokens,
-            tokenAddress,
-            startTimestamp,
-            expirationTimestamp,
-            expirationRecipient,
-            merkleTreeURI,
-            dropDescription
-        );
+        if (claimFee != 0) {
+            // Validate fee recipients and send to storage
+            uint16 sumBps;
+            for (uint256 i = 0; i < feeRecipients.length; i++) {
+                if (feeRecipients[i].recipient == address(0)) revert InvalidFeeRecipient();
+                if (feeRecipients[i].percentageBps == 0) revert InvalidFeeRecipient();
+                dropFeeDatas[dropId].feeRecipients.push(feeRecipients[i]);
+                sumBps += feeRecipients[i].percentageBps;
+            }
+            if (sumBps != 10_000) revert InvalidBps();
+        }
+
+        emit DropCreated(dropId, dropStaticData, claimFee, feeRecipients, dropMetadata);
+    }
+
+    /**
+     * @notice Get the drop data for a given drop ID
+     */
+    function getDrop(uint256 dropId)
+        external
+        view
+        returns (DropStaticData memory dropStaticData, DropFeeData memory dropFeeData, uint256 dropTokensClaimed)
+    {
+        if (dropId > numDrops || dropId == 0) revert InvalidDropId();
+
+        dropStaticData = dropStaticDatas[dropId];
+        dropFeeData = dropFeeDatas[dropId];
+        dropTokensClaimed = claimedTokens[dropId];
     }
 
     /**
@@ -189,13 +188,14 @@ contract Dropper {
      */
     function refundToRecipient(uint256 dropId) external {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
-        DropData storage drop = drops[dropId];
+        DropStaticData storage drop = dropStaticDatas[dropId];
+        uint256 dropClaimedTokens = claimedTokens[dropId];
         if (drop.expirationTimestamp > block.timestamp) revert DropStillLive();
-        if (drop.totalTokens == drop.claimedTokens) revert AllTokensClaimed();
+        if (drop.totalTokens == dropClaimedTokens) revert AllTokensClaimed();
 
         address expirationRecipient = drop.expirationRecipient;
-        uint256 tokensToRefund = drop.totalTokens - drop.claimedTokens;
-        drop.claimedTokens = drop.totalTokens;
+        uint256 tokensToRefund = drop.totalTokens - dropClaimedTokens;
+        claimedTokens[dropId] = drop.totalTokens;
         address tokenAddress = drop.tokenAddress;
 
         IERC20(tokenAddress).safeTransfer(expirationRecipient, tokensToRefund);
@@ -209,24 +209,49 @@ contract Dropper {
      * @param amount The amount of tokens to claim
      * @param merkleProof The merkle inclusion proof
      */
-    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) public {
+    function _claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) internal {
         if (dropId > numDrops || dropId == 0) revert InvalidDropId();
-        DropData storage drop = drops[dropId];
+        DropStaticData memory drop = dropStaticDatas[dropId];
+        DropFeeData memory dropFeeData = dropFeeDatas[dropId];
 
         if (drop.expirationTimestamp <= block.timestamp || block.timestamp < drop.startTimestamp) revert DropNotLive();
         if (hasClaimed[dropId][msg.sender]) revert DropAlreadyClaimed();
-        if (drop.claimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
+        uint256 dropClaimedTokens = claimedTokens[dropId];
+        if (dropClaimedTokens + amount > drop.totalTokens) revert InsufficientTokensRemaining();
 
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));
         if (!MerkleProof.verifyCalldata(merkleProof, drop.merkleRoot, leaf)) revert InvalidMerkleProof();
 
         hasClaimed[dropId][msg.sender] = true;
-        drop.claimedTokens += amount;
+        claimedTokens[dropId] = dropClaimedTokens + amount;
 
         address tokenAddress = drop.tokenAddress;
         IERC20(tokenAddress).safeTransfer(msg.sender, amount);
 
+        // Distribute fee
+        uint256 fee = dropFeeData.claimFee;
+
+        if (fee > 0) {
+            if (address(this).balance < fee) revert InvalidMsgValue();
+
+            for (uint256 i = 0; i < dropFeeData.feeRecipients.length; i++) {
+                dropFeeData.feeRecipients[i].recipient.call{
+                    value: dropFeeData.feeRecipients[i].percentageBps * fee / 10_000,
+                    gas: 100_000
+                }("");
+            }
+        }
+
         emit DropClaimed(dropId, msg.sender, tokenAddress, amount);
+    }
+
+    function claim(uint256 dropId, uint256 amount, bytes32[] calldata merkleProof) external payable {
+        _claim(dropId, amount, merkleProof);
+
+        uint256 remainingBalance = address(this).balance;
+        if (remainingBalance > 0) {
+            msg.sender.call{ value: remainingBalance, gas: 100_000 }("");
+        }
     }
 
     /**
@@ -241,11 +266,17 @@ contract Dropper {
         bytes32[][] calldata merkleProofs
     )
         external
+        payable
     {
         if (dropIds.length != amounts.length || dropIds.length != merkleProofs.length) revert ArityMismatch();
 
         for (uint256 i = 0; i < dropIds.length; i++) {
-            claim(dropIds[i], amounts[i], merkleProofs[i]);
+            _claim(dropIds[i], amounts[i], merkleProofs[i]);
+        }
+
+        uint256 remainingBalance = address(this).balance;
+        if (remainingBalance > 0) {
+            msg.sender.call{ value: remainingBalance, gas: 100_000 }("");
         }
     }
 
@@ -264,6 +295,6 @@ contract Dropper {
      * change in ABI.
      */
     function VERSION() external pure returns (string memory) {
-        return "1.0.0";
+        return "2.0.0";
     }
 }

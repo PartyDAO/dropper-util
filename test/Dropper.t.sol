@@ -11,16 +11,11 @@ import { IERC20Permit } from "openzeppelin-contracts/contracts/token/ERC20/exten
 contract DropperTest is PRBTest, StdCheats {
     event DropCreated(
         uint256 indexed dropId,
-        bytes32 merkleRoot,
-        uint256 totalTokens,
-        address indexed tokenAddress,
-        uint40 startTimestamp,
-        uint40 expirationTimestamp,
-        address expirationRecipient,
-        string merkleTreeURI,
-        string dropDescription
+        Dropper.DropStaticData dropStaticData,
+        uint256 claimFee,
+        Dropper.FeeRecipient[] feeRecipients,
+        Dropper.DropMetadata dropMetadata
     );
-
     event DropClaimed(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
 
     event DropRefunded(uint256 indexed dropId, address indexed recipient, address indexed tokenAddress, uint256 amount);
@@ -40,19 +35,46 @@ contract DropperTest is PRBTest, StdCheats {
         return keccak256(abi.encodePacked(a, amount));
     }
 
-    function testCreateDrop(
+    function testCreateDropWithFee(
         address[4] memory recipients,
-        uint40[4] memory amounts
+        uint40[4] memory amounts,
+        uint256 claimFee,
+        address[4] memory feeRecipientAddresses
     )
         public
         returns (uint256 dropId, bytes32[] memory merkleLeaves)
     {
+        Dropper.FeeRecipient[] memory feeRecipients = new Dropper.FeeRecipient[](0);
+        if (claimFee != 0) {
+            feeRecipients = new Dropper.FeeRecipient[](4);
+            vm.assume(claimFee < type(uint96).max);
+            vm.assume(feeRecipientAddresses.length < 10);
+            vm.assume(feeRecipientAddresses.length != 0);
+            for (uint256 i = 0; i < feeRecipients.length; i++) {
+                vm.assume(uint256(uint160(feeRecipientAddresses[i])) > 1e5);
+                vm.assume(feeRecipientAddresses[i].code.length == 0);
+
+                feeRecipients[i].recipient = feeRecipientAddresses[i];
+                feeRecipients[i] = Dropper.FeeRecipient({ recipient: feeRecipientAddresses[i], percentageBps: 2500 });
+
+                for (uint256 j = i; j < feeRecipients.length; j++) {
+                    if (i != j) {
+                        vm.assume(feeRecipientAddresses[i] != feeRecipientAddresses[j]);
+                    }
+                }
+                for (uint256 j = 0; j < recipients.length; j++) {
+                    vm.assume(feeRecipientAddresses[i] != recipients[j]);
+                }
+            }
+        }
+
         for (uint256 i = 0; i < recipients.length; i++) {
+            vm.assume(recipients[i] != address(this));
+            vm.assume(recipients[i] != address(dropper));
             for (uint256 j = i; j < recipients.length; j++) {
                 if (i != j) {
                     vm.assume(recipients[i] != recipients[j]);
                 }
-                vm.assume(recipients[i] != address(dropper));
             }
         }
 
@@ -71,34 +93,36 @@ contract DropperTest is PRBTest, StdCheats {
         deal(address(token), address(this), totalDropAmount);
         token.approve(address(dropper), totalDropAmount);
 
+        Dropper.DropStaticData memory dropStaticData = Dropper.DropStaticData({
+            merkleRoot: merkleRoot,
+            totalTokens: totalDropAmount,
+            tokenAddress: address(token),
+            startTimestamp: uint40(block.timestamp),
+            expirationTimestamp: uint40(block.timestamp + 3600),
+            expirationRecipient: address(this)
+        });
+        Dropper.DropMetadata memory dropMetadata =
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" });
+
         uint256 expectedDropId = dropper.numDrops() + 1;
         vm.expectEmit(true, true, true, true);
-        emit DropCreated(
-            expectedDropId,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
-        );
+        emit DropCreated(expectedDropId, dropStaticData, claimFee, feeRecipients, dropMetadata);
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
-        dropId = dropper.createDrop(
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
-        );
+        dropId = dropper.createDrop(dropStaticData, claimFee, feeRecipients, dropMetadata);
 
         assertEq(dropId, expectedDropId);
         assertEq(token.balanceOf(address(dropper)), balanceBefore + totalDropAmount);
+    }
+
+    function testCreateDrop(
+        address[4] memory recipients,
+        uint40[4] memory amounts
+    )
+        public
+        returns (uint256 dropId, bytes32[] memory merkleLeaves)
+    {
+        return testCreateDropWithFee(recipients, amounts, 0, [address(0), address(0), address(0), address(0)]);
     }
 
     function testCreateDropMerkleRootNotSet() public {
@@ -107,14 +131,17 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.MerkleRootNotSet.selector));
         dropper.createDrop(
-            bytes32(0),
-            1000e18,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(0),
+                totalTokens: 1000e18,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -124,14 +151,17 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(Dropper.ExpirationRecipientIsZero.selector);
         dropper.createDrop(
-            bytes32(uint256(1)),
-            1000e18,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(0),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(uint256(1)),
+                totalTokens: 1000e18,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(0)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -141,14 +171,17 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.TotalTokenIsZero.selector));
         dropper.createDrop(
-            bytes32(uint256(1)),
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(uint256(1)),
+                totalTokens: 0,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
             0,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -158,14 +191,17 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.TokenAddressIsZero.selector));
         dropper.createDrop(
-            bytes32(uint256(1)),
-            1000e18,
-            address(0),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(uint256(1)),
+                totalTokens: 1000e18,
+                tokenAddress: address(0),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -175,14 +211,17 @@ contract DropperTest is PRBTest, StdCheats {
 
         vm.expectRevert(abi.encodeWithSelector(Dropper.ExpirationTimestampInPast.selector));
         dropper.createDrop(
-            bytes32(uint256(1)),
-            1000e18,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp) - 1,
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(uint256(1)),
+                totalTokens: 1000e18,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp - 1),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -207,6 +246,83 @@ contract DropperTest is PRBTest, StdCheats {
 
         // All have claimed
         assertEq(token.balanceOf(address(dropper)), 0);
+    }
+
+    function test_claim_withClaimFee(
+        address[4] memory recipients,
+        uint40[4] memory amounts,
+        uint256 claimFee,
+        address[4] memory feeRecipientAddresses
+    )
+        public
+    {
+        vm.assume(claimFee > 0);
+
+        (uint256 dropId, bytes32[] memory merkleLeaves) =
+            testCreateDropWithFee(recipients, amounts, claimFee, feeRecipientAddresses);
+
+        (, Dropper.DropFeeData memory dropFeeData,) = dropper.getDrop(dropId);
+
+        for (uint256 i = 0; i < 4; i++) {
+            address member = recipients[i];
+            uint256 amount = amounts[i];
+
+            vm.deal(member, dropFeeData.claimFee);
+
+            bytes32[] memory proof = merkle.getProof(merkleLeaves, i);
+
+            vm.expectEmit(true, true, true, true);
+            emit DropClaimed(dropId, member, address(token), amount);
+
+            uint256[] memory feeRecipientBalancesBefore = new uint256[](feeRecipientAddresses.length);
+
+            for (uint256 j = 0; j < feeRecipientAddresses.length; j++) {
+                feeRecipientBalancesBefore[j] = feeRecipientAddresses[j].balance;
+            }
+
+            vm.prank(member);
+            dropper.claim{ value: dropFeeData.claimFee }(dropId, amount, proof);
+
+            for (uint256 j = 0; j < feeRecipientAddresses.length; j++) {
+                assertEq(
+                    feeRecipientAddresses[j].balance,
+                    feeRecipientBalancesBefore[j]
+                        + dropFeeData.claimFee * dropFeeData.feeRecipients[j].percentageBps / 10_000
+                );
+            }
+
+            assertEq(token.balanceOf(member), amount);
+            assertTrue(dropper.hasClaimed(dropId, member));
+        }
+    }
+
+    function test_claim_revert_claimFeeNotEnough(
+        address[4] memory recipients,
+        uint40[4] memory amounts,
+        uint256 claimFee,
+        address[4] memory feeRecipientAddresses
+    )
+        public
+    {
+        vm.assume(claimFee > 0);
+        (uint256 dropId, bytes32[] memory merkleLeaves) =
+            testCreateDropWithFee(recipients, amounts, claimFee, feeRecipientAddresses);
+
+        (, Dropper.DropFeeData memory drop,) = dropper.getDrop(dropId);
+
+        bytes32[] memory proof = merkle.getProof(merkleLeaves, 0);
+
+        address member = recipients[0];
+        vm.deal(member, drop.claimFee);
+
+        vm.expectRevert(Dropper.InvalidMsgValue.selector);
+        vm.prank(member);
+        dropper.claim{ value: drop.claimFee - 1 }(dropId, amounts[0], proof);
+    }
+
+    function test_claim_revert_invalidDropId() external {
+        vm.expectRevert(Dropper.InvalidDropId.selector);
+        dropper.claim(0, 100, new bytes32[](0));
     }
 
     function testClaimDropExpired(address[4] memory recipients, uint40[4] memory amounts) public {
@@ -262,31 +378,23 @@ contract DropperTest is PRBTest, StdCheats {
         deal(address(token), address(this), totalDropAmount);
         token.approve(address(dropper), totalDropAmount);
 
+        Dropper.DropStaticData memory dropStaticData = Dropper.DropStaticData({
+            merkleRoot: merkleRoot,
+            totalTokens: totalDropAmount,
+            tokenAddress: address(token),
+            startTimestamp: uint40(block.timestamp),
+            expirationTimestamp: uint40(block.timestamp + 3600),
+            expirationRecipient: address(this)
+        });
+        Dropper.DropMetadata memory dropMetadata =
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" });
+
         uint256 expectedDropId = dropper.numDrops() + 1;
         vm.expectEmit(true, true, true, true);
-        emit DropCreated(
-            expectedDropId,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp) + 3600,
-            address(this),
-            "someURI",
-            "My Drop"
-        );
+        emit DropCreated(expectedDropId, dropStaticData, 0, new Dropper.FeeRecipient[](0), dropMetadata);
 
         uint256 balanceBefore = token.balanceOf(address(dropper));
-        uint256 dropId = dropper.createDrop(
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
-        );
+        uint256 dropId = dropper.createDrop(dropStaticData, 0, new Dropper.FeeRecipient[](0), dropMetadata);
 
         assertEq(dropId, expectedDropId);
         assertEq(token.balanceOf(address(dropper)), balanceBefore + totalDropAmount);
@@ -376,14 +484,17 @@ contract DropperTest is PRBTest, StdCheats {
     function test_createDrop_fail_endBeforeStart() external {
         vm.expectRevert(Dropper.EndBeforeStart.selector);
         dropper.createDrop(
-            bytes32(uint256(2)),
-            1e5,
-            address(token),
-            uint40(block.timestamp + 3601),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: bytes32(uint256(2)),
+                totalTokens: 1e5,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp + 3601),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -429,33 +540,37 @@ contract DropperTest is PRBTest, StdCheats {
         (uint8 v, bytes32 r, bytes32 s) =
             _signPermit(creator, address(token), address(dropper), totalDropAmount, block.timestamp + 1);
 
+        Dropper.DropStaticData memory dropStaticData = Dropper.DropStaticData({
+            merkleRoot: merkleRoot,
+            totalTokens: totalDropAmount,
+            tokenAddress: address(token),
+            startTimestamp: uint40(block.timestamp),
+            expirationTimestamp: uint40(block.timestamp + 3600),
+            expirationRecipient: address(this)
+        });
+        Dropper.DropMetadata memory dropMetadata =
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" });
+
         uint256 expectedDropId = dropper.numDrops() + 1;
         vm.expectEmit(true, true, true, true);
-        emit DropCreated(
-            expectedDropId,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp + 3600),
-            address(this),
-            "someURI",
-            "My Drop"
-        );
+        emit DropCreated(expectedDropId, dropStaticData, 0, new Dropper.FeeRecipient[](0), dropMetadata);
 
         Dropper.PermitArgs memory permitArgs = Dropper.PermitArgs(totalDropAmount, block.timestamp + 1, v, r, s);
 
         vm.prank(creator.addr);
         dropper.permitAndCreateDrop(
             permitArgs,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp) + 3600,
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: merkleRoot,
+                totalTokens: totalDropAmount,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -490,14 +605,17 @@ contract DropperTest is PRBTest, StdCheats {
         vm.expectRevert(Dropper.InsufficientPermitAmount.selector);
         dropper.permitAndCreateDrop(
             permitArgs,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp) + 3600,
-            address(this),
-            "someURI",
-            "My Drop"
+            Dropper.DropStaticData({
+                merkleRoot: merkleRoot,
+                totalTokens: totalDropAmount,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
     }
 
@@ -535,15 +653,22 @@ contract DropperTest is PRBTest, StdCheats {
         vm.prank(creator.addr);
         dropper.permitAndCreateDrop(
             permitArgs,
-            merkleRoot,
-            totalDropAmount,
-            address(token),
-            uint40(block.timestamp),
-            uint40(block.timestamp) + 3600,
-            address(this),
-            "someURI",
-            "My Airdrop"
+            Dropper.DropStaticData({
+                merkleRoot: merkleRoot,
+                totalTokens: totalDropAmount,
+                tokenAddress: address(token),
+                startTimestamp: uint40(block.timestamp),
+                expirationTimestamp: uint40(block.timestamp + 3600),
+                expirationRecipient: address(this)
+            }),
+            0,
+            new Dropper.FeeRecipient[](0),
+            Dropper.DropMetadata({ merkleTreeURI: "someURI", dropDescription: "My Drop" })
         );
+    }
+
+    function test_VERSION() external {
+        assertEq(dropper.VERSION(), "2.0.0");
     }
 
     function _signPermit(
@@ -566,4 +691,6 @@ contract DropperTest is PRBTest, StdCheats {
 
         return vm.sign(wallet, digest);
     }
+
+    receive() external payable { }
 }
