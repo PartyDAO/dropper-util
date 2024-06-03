@@ -21,15 +21,24 @@ yargs(hideBin(process.argv))
         .describe("rpc", "The URL of the RPC to use for deployment")
         .describe("pk", "The private key to use for deployment")
         .describe("salt", "The salt used at deployment. Defaults to 0")
+        .describe("explorer-api-key", "Explorer key for etherscan product on the given network")
         .array("constructor-args")
         .string("constructor-args")
         .string("pk")
         .string("rpc")
         .string("salt")
+        .string("explorer-api-key")
         .demandOption(["rpc", "pk"]);
     },
     (argv) => {
-      runDeploy(argv.contract, argv.rpc, argv.pk, argv["constructor-args"], argv.salt ?? ethers.ZeroHash);
+      runDeploy(
+        argv.contract,
+        argv.rpc,
+        argv.pk,
+        argv["constructor-args"],
+        argv.salt ?? ethers.ZeroHash,
+        argv.explorerApiKey,
+      );
     },
   )
   .command(
@@ -48,7 +57,14 @@ yargs(hideBin(process.argv))
   )
   .parse();
 
-async function runDeploy(contract: string, rpcUrl: string, privateKey: string, constructorArgs: any, salt: string) {
+async function runDeploy(
+  contract: string,
+  rpcUrl: string,
+  privateKey: string,
+  constructorArgs: any,
+  salt: string,
+  explorerApiKey: string | undefined,
+) {
   const contracts = getProjectContracts();
   if (!contracts.includes(contract)) {
     throw new Error(`Contract ${contract} not found in project`);
@@ -78,15 +94,25 @@ async function runDeploy(contract: string, rpcUrl: string, privateKey: string, c
     ],
   );
 
-  const getDeterministicAddressCall = `cast call ${CROSS_CHAIN_CREATE2_FACTORY} "safeCreate2(bytes32,bytes)" ${salt} ${deploymentBytecode} --rpc-url ${rpcUrl}`;
+  const getDeterministicAddressCall = `cast call ${CROSS_CHAIN_CREATE2_FACTORY} "findCreate2Address(bytes32,bytes)" ${salt} ${deploymentBytecode} --rpc-url ${rpcUrl}`;
   const deterministicCreateCall = `cast send ${CROSS_CHAIN_CREATE2_FACTORY} "safeCreate2(bytes32,bytes)" ${salt} ${deploymentBytecode} --rpc-url ${rpcUrl} --private-key ${privateKey}`;
 
   const getAddrResult = (await execSync(getDeterministicAddressCall)).toString().trim();
-  newDeploy.address = ethers.AbiCoder.defaultAbiCoder().decode(["address"], getAddrResult)[0];
+  const addr = ethers.AbiCoder.defaultAbiCoder().decode(["address"], getAddrResult)[0];
+  if (addr == ethers.ZeroAddress) {
+    throw new Error(`Contract ${contract} already deployed using salt ${salt} with version ${newDeploy.version}`);
+  }
+  newDeploy.address = addr;
 
   await execSync(deterministicCreateCall);
-
   console.log(`Contract ${contract} deployed to ${newDeploy.address} with version ${newDeploy.version}`);
+
+  if (!!explorerApiKey) {
+    const verifyCall = `forge v --rpc-url ${rpcUrl} --etherscan-api-key ${explorerApiKey!} ${constructorArgs != "" ? `--constructor-args ${constructorArgs}` : ""} ${newDeploy.address} ${contract}`;
+    console.log(`Verifying ${contract}`);
+    const res = await execSync(verifyCall);
+    console.log(res.toString());
+  }
 
   writeDeploy(contract, newDeploy, chainId);
 }
